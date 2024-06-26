@@ -19,4 +19,9 @@ zarrURL = "https://js2.jetstream-cloud.org:8001/swift/v1/sdp-morphodepot-data/UF
 imageio = itk.OMEZarrNGFFImageIO.New()
 image = itk.imread(zarrURL, imageio=imageio)
 
+a = itk.GetArrayViewFromImage(image)
+print(a.shape)
+print(a.max())
+node = slicer.util.addVolumeFromArray(a)
+
 //itk.imwrite(image, sys.argv[2], imageio=imageio, compression=False)

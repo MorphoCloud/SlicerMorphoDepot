@@ -176,15 +176,22 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # in batch mode, without a graphical user interface.
         self.logic = MorphoDepotLogic()
 
-        # TODO: these should start blank and then be in settings 
         # TODO: the rest of the UI should be disabled until they are filled in with valid info
-        path = qt.QStandardPaths.writableLocation(qt.QStandardPaths.DocumentsLocation)
-        self.ui.repoDirectory.currentPath = path
-        self.ui.githubUser.text = "pieper923"
-        self.ui.githubRepo.text = "pieper/MD_E15"
+        self.ui.githubUser.text = slicer.util.settingsValue("MorphoDepot/githubUser", "")
+        self.ui.githubTokenPath.currentPath = slicer.util.settingsValue("MorphoDepot/githubTokenPath", "")
+        repoDir = slicer.util.settingsValue("MorphoDepot/repoDirectory", "")
+        if repoDir == "":
+            repoDir = qt.QStandardPaths.writableLocation(qt.QStandardPaths.DocumentsLocation)
+        self.ui.repoDirectory.currentPath = repoDir
+        self.ui.githubRepo.text = slicer.util.settingsValue("MorphoDepot/githubRepo", "")
 
         # Connections
         self.ui.issueList.itemDoubleClicked.connect(self.onItemDoubleClicked)
+        self.ui.githubUser.editingFinished.connect(self.onGithubUserChanged)
+        self.ui.githubTokenPath.currentPathChanged.connect(self.onGithubTokenPathChanged)
+        self.ui.repoDirectory.currentPathChanged.connect(self.onRepoDirectoryChanged)
+        self.ui.githubRepo.editingFinished.connect(self.onGithubRepoChanged)
+
 
         # Buttons
         self.ui.refreshIssuesButton.connect("clicked(bool)", self.updateIssueList)
@@ -211,6 +218,18 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.logic.loadIssue(ghRepo, issue, repoDirectory)
             self.ui.checkpointButton.enabled = True
             self.ui.reviewButton.enabled = True
+
+    def onGithubUserChanged(self):
+        qt.QSettings().setValue("MorphoDepot/githubUser", self.ui.githubUser.text)
+
+    def onGithubTokenPathChanged(self):
+        qt.QSettings().setValue("MorphoDepot/githubTokenPath", self.ui.githubTokenPath.currentPath)
+
+    def onRepoDirectoryChanged(self):
+        qt.QSettings().setValue("MorphoDepot/repoDirectory", self.ui.repoDirectory.currentPath)
+
+    def onGithubRepoChanged(self):
+        qt.QSettings().setValue("MorphoDepot/githubRepo", self.ui.githubRepo.text)
 
 
 #
@@ -242,7 +261,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     def loadIssue(self, ghRepo, issue, repoDirectory):
         import git
 
-        tokenPath = "/home/exouser/.ssh/pieper923-MD_E15-token" # TODO
+        tokenPath = slicer.util.settingsValue("MorphoDepot/githubTokenPath", "")
         repoToken = open(tokenPath).read().strip()
 
         repositoryURL = f"https://{repoToken}@github.com/{ghRepo}"
@@ -276,7 +295,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         slicer.util.downloadFile(volumeURL, nrrdPath)
         volume = slicer.util.loadVolume(nrrdPath)
 
-        # TODO: need way to identify segmentation
+        # TODO: need way to identify segmentation - should be named for issue
         segmentationPath = f"{localRepo.working_dir}/IMPC_sample_data.seg.nrrd"
         segmentation = slicer.util.loadSegmentation(segmentationPath)
 

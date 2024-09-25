@@ -23,28 +23,38 @@
       <item row="2" column="0">
        <widget class="QLabel" name="label">
         <property name="text">
-         <string>Username</string>
+         <string>Github username</string>
+        </property>
+       </widget>
+      </item>
+      <item row="9" column="0">
+       <widget class="QLabel" name="label_2">
+        <property name="text">
+         <string>Github repository</string>
+        </property>
+       </widget>
+      </item>
+      <item row="10" column="0">
+       <widget class="QLineEdit" name="githubRepo"/>
+      </item>
+      <item row="7" column="0">
+       <widget class="QLabel" name="label_3">
+        <property name="text">
+         <string>Local repository directory</string>
         </property>
        </widget>
       </item>
       <item row="4" column="0">
-       <widget class="QLabel" name="label_2">
+       <widget class="QLabel" name="label_4">
         <property name="text">
-         <string>Repository</string>
+         <string>Github token path</string>
         </property>
        </widget>
       </item>
-      <item row="5" column="0">
-       <widget class="QLineEdit" name="githubRepo"/>
+      <item row="5" column="0" colspan="2">
+       <widget class="ctkPathLineEdit" name="githubTokenPath"/>
       </item>
-      <item row="0" column="0">
-       <widget class="QLabel" name="label_3">
-        <property name="text">
-         <string>Repository Directory</string>
-        </property>
-       </widget>
-      </item>
-      <item row="1" column="0">
+      <item row="8" column="0" colspan="2">
        <widget class="ctkPathLineEdit" name="repoDirectory">
         <property name="sizeAdjustPolicy">
          <enum>ctkPathLineEdit::AdjustToContents</enum>

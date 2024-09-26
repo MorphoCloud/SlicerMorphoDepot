@@ -1,3 +1,4 @@
+import glob
 import logging
 import os
 from typing import Annotated, Optional
@@ -295,9 +296,16 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         slicer.util.downloadFile(volumeURL, nrrdPath)
         volume = slicer.util.loadVolume(nrrdPath)
 
-        # TODO: need way to identify segmentation - should be named for issue
-        segmentationPath = f"{localRepo.working_dir}/IMPC_sample_data.seg.nrrd"
-        segmentation = slicer.util.loadSegmentation(segmentationPath)
+        branchSegmentation = None
+        for segmentationPath in glob.glob(f"{localRepo.working_dir}/*.seg.nrrd"):
+            segmentation = slicer.util.loadSegmentation(segmentationPath)
+            if segmentationPath.split("/")[-1].split(".")[0] == branchName:
+                branchSegmentation = segmentation
+
+        if not branchSegmentation:
+            segmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
+            segmentationNode.CreateDefaultDisplayNodes()
+            segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(volume)
 
     def getParameterNode(self):
         return MorphoDepotParameterNode(super().getParameterNode())

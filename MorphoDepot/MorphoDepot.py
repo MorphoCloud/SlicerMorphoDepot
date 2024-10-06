@@ -1,3 +1,5 @@
+import git
+import github
 import glob
 import logging
 import os
@@ -157,7 +159,6 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.issuesByItem[item] = issue
             self.ui.issueList.addItem(item)
 
-
     def setup(self) -> None:
         """Called when the user opens the module the first time and the widget is initialized."""
         ScriptedLoadableModuleWidget.setup(self)
@@ -192,7 +193,8 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.githubTokenPath.currentPathChanged.connect(self.onGithubTokenPathChanged)
         self.ui.repoDirectory.currentPathChanged.connect(self.onRepoDirectoryChanged)
         self.ui.githubRepo.editingFinished.connect(self.onGithubRepoChanged)
-
+        self.ui.checkpointButton.clicked.connect(self.logic.issueCheckpoint)
+        self.ui.reviewButton.clicked.connect(self.issueRequestReview)
 
         # Buttons
         self.ui.refreshIssuesButton.connect("clicked(bool)", self.updateIssueList)
@@ -232,6 +234,11 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def onGithubRepoChanged(self):
         qt.QSettings().setValue("MorphoDepot/githubRepo", self.ui.githubRepo.text)
 
+    def issueRequestReview(self):
+        """Create a checkpoint if need, then mark issue as ready for review"""
+        print("issueRequestReview")
+        prURL = self.logic.issueRequestReviewURL()
+        qt.QDesktopServices().openUrl(qt.QUrl(prURL))
 
 #
 # MorphoDepotLogic
@@ -251,61 +258,126 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     def __init__(self) -> None:
         """Called when the logic class is instantiated. Can be used for initializing member variables."""
         ScriptedLoadableModuleLogic.__init__(self)
+        self.segmentationNode = None
+        self.segmentationPath = ""
+        self.localRepo = None
 
     def getGithubIssues(self, ghRepo, ghUser):
-        import github
         gh = github.Github()
         repo = gh.get_repo(ghRepo)
         issues = repo.get_issues(assignee=ghUser)
         return ([issue for issue in issues])
 
     def loadIssue(self, ghRepo, issue, repoDirectory):
-        import git
 
+        ghUser = slicer.util.settingsValue("MorphoDepot/githubUser", "")
         tokenPath = slicer.util.settingsValue("MorphoDepot/githubTokenPath", "")
         repoToken = open(tokenPath).read().strip()
 
-        repositoryURL = f"https://{repoToken}@github.com/{ghRepo}"
+        repositoryURL = f"https://{repoToken}:@github.com/{ghRepo}"
         localDirectory = f"{repoDirectory}/{ghRepo.split('/')[1]}"
 
         if os.path.exists(localDirectory):
-            localRepo = git.Repo(localDirectory)
+            self.localRepo = git.Repo(localDirectory)
         else:
             logging.info(f"cloning from {repositoryURL} to {localDirectory}")
-            localRepo = git.Repo.clone_from(repositoryURL, localDirectory)
+            self.localRepo = git.Repo.clone_from(repositoryURL, localDirectory)
+            remoteURL = f"https://{repoToken}:@github.com/{ghUser}/{ghRepo.split('/')[1]}"
+            self.localRepo.create_remote(ghUser, remoteURL)
 
         issueNumber = issue.number
-        branchName=f"{issueNumber}-depot-branch"
+        branchName=f"issue-{issueNumber}"
 
         issueBranch = None
-        for branch in localRepo.branches:
+        for branch in self.localRepo.branches:
             if branch.name == branchName:
                 issueBranch = branch
                 break
 
         if not issueBranch:
-            localRepo.git.checkout("HEAD", b=branchName)
+            self.localRepo.git.checkout("HEAD", b=branchName)
         else:
-            localRepo.git.checkout(branchName)
+            self.localRepo.git.checkout(branchName)
+            origin = self.localRepo.remotes.origin
+            origin.pull('main')
+
+        # TODO: move from single volume and color table file to segmentation specification json
+
+        colorPath = f"{self.localRepo.working_dir}/KOMP2.ctbl"
+        colorNode = slicer.util.loadColorTable(colorPath)
 
         # TODO: move from single volume file to segmentation specification json
-        volumePath = f"{localRepo.working_dir}/master_volume"
+        volumePath = f"{self.localRepo.working_dir}/master_volume"
         volumeURL = open(volumePath).read().strip()
         print(volumeURL)
         nrrdPath = slicer.app.temporaryPath+"/volume.nrrd"
         slicer.util.downloadFile(volumeURL, nrrdPath)
-        volume = slicer.util.loadVolume(nrrdPath)
+        volumeNode = slicer.util.loadVolume(nrrdPath)
 
-        branchSegmentation = None
-        for segmentationPath in glob.glob(f"{localRepo.working_dir}/*.seg.nrrd"):
-            segmentation = slicer.util.loadSegmentation(segmentationPath)
-            if segmentationPath.split("/")[-1].split(".")[0] == branchName:
-                branchSegmentation = segmentation
+        # Load all segmentations
+        segmentationNodesByName = {}
+        for segmentationPath in glob.glob(f"{localDirectory}/*.seg.nrrd"):
+            name = os.path.split(segmentationPath)[1].split(".")[0]
+            segmentationNodesByName[name] = slicer.util.loadSegmentation(segmentationPath)
 
-        if not branchSegmentation:
-            segmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
-            segmentationNode.CreateDefaultDisplayNodes()
-            segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(volume)
+        # Switch to Segment Editor module
+        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
+        pluginHandlerSingleton.pluginByName("Default").switchToModule("SegmentEditor")
+        editorWidget = slicer.modules.segmenteditor.widgetRepresentation().self()
+
+        # TODO: specify in the issue which segments in the color table should be included in issue segmentation
+        if branchName in segmentationNodesByName.keys():
+            self.segmentationNode = segmentationNodesByName[branchName]
+        else:
+            self.segmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
+            self.segmentationNode.CreateDefaultDisplayNodes()
+            self.segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(volumeNode)
+            self.segmentationNode.SetName(branchName)
+            for colorIndex in range(colorNode.GetNumberOfColors()):
+                color = [0]*4
+                colorNode.GetColor(colorIndex, color)
+                name = colorNode.GetColorName(colorIndex)
+                segment = slicer.vtkSegment()
+                segment.SetColor(color[:3])
+                segment.SetName(name)
+                self.segmentationNode.GetSegmentation().AddSegment(segment)
+
+        self.segmentationPath = f"{localDirectory}/{branchName}.seg.nrrd"
+        slicer.util.saveNode(self.segmentationNode, self.segmentationPath)
+
+        editorWidget.parameterSetNode.SetAndObserveSegmentationNode(self.segmentationNode)
+        editorWidget.parameterSetNode.SetAndObserveSourceVolumeNode(volumeNode)
+
+    def issueCheckpoint(self):
+        """Create a PR if needed and push current segmentation
+        Mark the PR as WIP
+        """
+        print("issueCheckpoint")
+        if not self.segmentationNode:
+            return
+        slicer.util.saveNode(self.segmentationNode, self.segmentationPath)
+        self.localRepo.index.add([self.segmentationPath])
+        self.localRepo.index.commit("New segmentation") # TODO: make this a text entry field
+
+        ghUser = slicer.util.settingsValue("MorphoDepot/githubUser", "")
+        remote = self.localRepo.remote(name=ghUser)
+        remote.push()
+
+    def issueRequestReviewURL(self):
+        if not self.segmentationNode:
+            return ""
+        self.issueCheckpoint()
+
+        ghRepo = slicer.util.settingsValue("MorphoDepot/githubRepo", "")
+        ghUser = slicer.util.settingsValue("MorphoDepot/githubUser", "")
+        localRepo = self.localRepo
+
+        issueName = localRepo.active_branch.name
+        repoName = os.path.split(localRepo.working_dir)[1]
+
+        # https://github.com/SlicerMorph/MD_E15/compare/main...pieper923:MD_E15:issue-1?expand=1
+        prURL = f"https://github.com/{ghRepo}/compare/main...{ghUser}:{repoName}:{issueName}?expand=1"
+        return prURL
 
     def getParameterNode(self):
         return MorphoDepotParameterNode(super().getParameterNode())

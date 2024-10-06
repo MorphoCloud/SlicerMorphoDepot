@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>325</width>
-    <height>454</height>
+    <height>455</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
@@ -70,10 +70,10 @@
       <string>Assigned Issues</string>
      </property>
      <layout class="QFormLayout" name="formLayout_2">
-      <item row="0" column="0">
+      <item row="1" column="0">
        <widget class="QListWidget" name="issueList"/>
       </item>
-      <item row="1" column="0">
+      <item row="0" column="0">
        <widget class="QPushButton" name="refreshIssuesButton">
         <property name="text">
          <string>Refresh</string>

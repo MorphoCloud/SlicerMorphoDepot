@@ -7,63 +7,10 @@
     <x>0</x>
     <y>0</y>
     <width>325</width>
-    <height>455</height>
+    <height>522</height>
    </rect>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
-   <item>
-    <widget class="ctkCollapsibleButton" name="CollapsibleButton">
-     <property name="text">
-      <string>Github</string>
-     </property>
-     <layout class="QFormLayout" name="formLayout">
-      <item row="3" column="0">
-       <widget class="QLineEdit" name="githubUser"/>
-      </item>
-      <item row="2" column="0">
-       <widget class="QLabel" name="label">
-        <property name="text">
-         <string>Github username</string>
-        </property>
-       </widget>
-      </item>
-      <item row="9" column="0">
-       <widget class="QLabel" name="label_2">
-        <property name="text">
-         <string>Github repository</string>
-        </property>
-       </widget>
-      </item>
-      <item row="10" column="0">
-       <widget class="QLineEdit" name="githubRepo"/>
-      </item>
-      <item row="7" column="0">
-       <widget class="QLabel" name="label_3">
-        <property name="text">
-         <string>Local repository directory</string>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="0">
-       <widget class="QLabel" name="label_4">
-        <property name="text">
-         <string>Github token path</string>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="0" colspan="2">
-       <widget class="ctkPathLineEdit" name="githubTokenPath"/>
-      </item>
-      <item row="8" column="0" colspan="2">
-       <widget class="ctkPathLineEdit" name="repoDirectory">
-        <property name="sizeAdjustPolicy">
-         <enum>ctkPathLineEdit::AdjustToContents</enum>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
    <item>
     <widget class="ctkCollapsibleButton" name="issuesCollapsibleButton">
      <property name="text">
@@ -94,6 +41,9 @@
         <property name="enabled">
          <bool>false</bool>
         </property>
+        <property name="toolTip">
+         <string>Commit current segmentation to your github fork of the source repository</string>
+        </property>
         <property name="text">
          <string>Save checkpoint</string>
         </property>
@@ -104,8 +54,37 @@
         <property name="enabled">
          <bool>false</bool>
         </property>
+        <property name="toolTip">
+         <string>Create a pull request to merge your segmentation into the source repository</string>
+        </property>
         <property name="text">
          <string>Save and request review</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="ctkCollapsibleButton" name="CollapsibleButton">
+     <property name="text">
+      <string>Advanced</string>
+     </property>
+     <property name="collapsed">
+      <bool>true</bool>
+     </property>
+     <layout class="QFormLayout" name="formLayout">
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_3">
+        <property name="text">
+         <string>Local repository directory</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0" colspan="2">
+       <widget class="ctkPathLineEdit" name="repoDirectory">
+        <property name="sizeAdjustPolicy">
+         <enum>ctkPathLineEdit::AdjustToContents</enum>
         </property>
        </widget>
       </item>

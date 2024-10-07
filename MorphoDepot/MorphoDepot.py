@@ -1,6 +1,6 @@
 import git
-import github
 import glob
+import json
 import logging
 import os
 from typing import Annotated, Optional
@@ -149,13 +149,10 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def updateIssueList(self):
         self.ui.issueList.clear()
         self.issuesByItem = {}
-
-        ghUser = self.ui.githubUser.text
-        ghRepo = self.ui.githubRepo.text
-        print(f"checking for user {ghUser} in {ghRepo}")
-        issues = self.logic.getGithubIssues(ghRepo, ghUser)
-        for issue in issues:
-            item = qt.QListWidgetItem(issue.title)
+        issueList = self.logic.issueList()
+        for issue in issueList:
+            issueTitle = f"{issue['repository']['nameWithOwner']}, #{issue['number']}: {issue['title']}"
+            item = qt.QListWidgetItem(issueTitle)
             self.issuesByItem[item] = issue
             self.ui.issueList.addItem(item)
 
@@ -178,21 +175,13 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # in batch mode, without a graphical user interface.
         self.logic = MorphoDepotLogic()
 
-        # TODO: the rest of the UI should be disabled until they are filled in with valid info
-        self.ui.githubUser.text = slicer.util.settingsValue("MorphoDepot/githubUser", "")
-        self.ui.githubTokenPath.currentPath = slicer.util.settingsValue("MorphoDepot/githubTokenPath", "")
         repoDir = slicer.util.settingsValue("MorphoDepot/repoDirectory", "")
         if repoDir == "":
             repoDir = qt.QStandardPaths.writableLocation(qt.QStandardPaths.DocumentsLocation)
         self.ui.repoDirectory.currentPath = repoDir
-        self.ui.githubRepo.text = slicer.util.settingsValue("MorphoDepot/githubRepo", "")
 
         # Connections
         self.ui.issueList.itemDoubleClicked.connect(self.onItemDoubleClicked)
-        self.ui.githubUser.editingFinished.connect(self.onGithubUserChanged)
-        self.ui.githubTokenPath.currentPathChanged.connect(self.onGithubTokenPathChanged)
-        self.ui.repoDirectory.currentPathChanged.connect(self.onRepoDirectoryChanged)
-        self.ui.githubRepo.editingFinished.connect(self.onGithubRepoChanged)
         self.ui.checkpointButton.clicked.connect(self.logic.issueCheckpoint)
         self.ui.reviewButton.clicked.connect(self.issueRequestReview)
 
@@ -213,26 +202,17 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         pass
 
     def onItemDoubleClicked(self, item):
-        ghRepo = self.ui.githubRepo.text
         repoDirectory = self.ui.repoDirectory.currentPath
         issue = self.issuesByItem[item]
         if slicer.util.confirmOkCancelDisplay("Close scene and load issue?"):
             slicer.mrmlScene.Clear()
-            self.logic.loadIssue(ghRepo, issue, repoDirectory)
+            self.logic.loadIssue(issue, repoDirectory)
             self.ui.checkpointButton.enabled = True
             self.ui.reviewButton.enabled = True
-
-    def onGithubUserChanged(self):
-        qt.QSettings().setValue("MorphoDepot/githubUser", self.ui.githubUser.text)
-
-    def onGithubTokenPathChanged(self):
-        qt.QSettings().setValue("MorphoDepot/githubTokenPath", self.ui.githubTokenPath.currentPath)
+            slicer.util.showStatusMessage(f"Start segmenting {item.text()}")
 
     def onRepoDirectoryChanged(self):
         qt.QSettings().setValue("MorphoDepot/repoDirectory", self.ui.repoDirectory.currentPath)
-
-    def onGithubRepoChanged(self):
-        qt.QSettings().setValue("MorphoDepot/githubRepo", self.ui.githubRepo.text)
 
     def issueRequestReview(self):
         """Create a checkpoint if need, then mark issue as ready for review"""
@@ -262,30 +242,37 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.segmentationPath = ""
         self.localRepo = None
 
-    def getGithubIssues(self, ghRepo, ghUser):
-        gh = github.Github()
-        repo = gh.get_repo(ghRepo)
-        issues = repo.get_issues(assignee=ghUser)
-        return ([issue for issue in issues])
+    def gh(self, command):
+        process = slicer.util.launchConsoleProcess(["gh"] + command.split())
+        result = process.communicate()
+        print(result)
+        if result[1] != None:
+            logging.error("gh command failed")
+            logging.error(result[1])
+        return result[0]
 
-    def loadIssue(self, ghRepo, issue, repoDirectory):
+    def issueList(self):
+        issueList = json.loads(self.gh("search issues --assignee=@me --state open --json repository,title,number"))
+        return issueList
 
-        ghUser = slicer.util.settingsValue("MorphoDepot/githubUser", "")
-        tokenPath = slicer.util.settingsValue("MorphoDepot/githubTokenPath", "")
-        repoToken = open(tokenPath).read().strip()
+    def repositoryList(self):
+        repositories = json.loads(self.gh("repo list --json name"))
+        repositoryList = [r['name'] for r in repositories]
+        return repositoryList
 
-        repositoryURL = f"https://{repoToken}:@github.com/{ghRepo}"
-        localDirectory = f"{repoDirectory}/{ghRepo.split('/')[1]}"
+    def loadIssue(self, issue, repoDirectory):
 
-        if os.path.exists(localDirectory):
-            self.localRepo = git.Repo(localDirectory)
-        else:
-            logging.info(f"cloning from {repositoryURL} to {localDirectory}")
-            self.localRepo = git.Repo.clone_from(repositoryURL, localDirectory)
-            remoteURL = f"https://{repoToken}:@github.com/{ghUser}/{ghRepo.split('/')[1]}"
-            self.localRepo.create_remote(ghUser, remoteURL)
+        sourceRepository = issue['repository']['nameWithOwner']
+        repositoryName = issue['repository']['name']
+        localDirectory = f"{repoDirectory}/{repositoryName}"
 
-        issueNumber = issue.number
+        if not os.path.exists(localDirectory):
+            if repositoryName not in self.repositoryList():
+                self.gh(f"repo fork {sourceRepository} --remote=true --clone=false")
+            self.gh(f"repo clone {repositoryName} {localDirectory}")
+        self.localRepo = git.Repo(localDirectory)
+
+        issueNumber = issue['number']
         branchName=f"issue-{issueNumber}"
 
         issueBranch = None
@@ -298,12 +285,12 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             self.localRepo.git.checkout("HEAD", b=branchName)
         else:
             self.localRepo.git.checkout(branchName)
-            origin = self.localRepo.remotes.origin
-            origin.pull('main')
+        origin = self.localRepo.remotes.origin
+        origin.pull('main')
 
         # TODO: move from single volume and color table file to segmentation specification json
 
-        colorPath = f"{self.localRepo.working_dir}/KOMP2.ctbl"
+        colorPath = glob.glob(f"{self.localRepo.working_dir}/*.ctbl")[0]
         colorNode = slicer.util.loadColorTable(colorPath)
 
         # TODO: move from single volume file to segmentation specification json
@@ -359,9 +346,9 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.localRepo.index.add([self.segmentationPath])
         self.localRepo.index.commit("New segmentation") # TODO: make this a text entry field
 
-        ghUser = slicer.util.settingsValue("MorphoDepot/githubUser", "")
-        remote = self.localRepo.remote(name=ghUser)
-        remote.push()
+        branchName = self.localRepo.active_branch.name
+        remote = self.localRepo.remote(name="origin")
+        remote.push(branchName)
 
     def issueRequestReviewURL(self):
         if not self.segmentationNode:

@@ -355,15 +355,18 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             return ""
         self.issueCheckpoint()
 
-        ghRepo = slicer.util.settingsValue("MorphoDepot/githubRepo", "")
-        ghUser = slicer.util.settingsValue("MorphoDepot/githubUser", "")
         localRepo = self.localRepo
-
         issueName = localRepo.active_branch.name
-        repoName = os.path.split(localRepo.working_dir)[1]
+
+        origin = localRepo.remote(name="origin")
+        originURL = list(origin.urls)[0]
+        originRepo = ":".join(originURL.split("/")[-2:]).split(".")[0]
+        upstream = localRepo.remote(name="upstream")
+        upstreamURL = list(upstream.urls)[0]
+        upstreamURLFragment = "/".join(upstreamURL.split("/")[-2:]).split(".")[0]
 
         # https://github.com/SlicerMorph/MD_E15/compare/main...pieper923:MD_E15:issue-1?expand=1
-        prURL = f"https://github.com/{ghRepo}/compare/main...{ghUser}:{repoName}:{issueName}?expand=1"
+        prURL = f"https://github.com/{upstreamURLFragment}/compare/main...{originRepo}:{issueName}?expand=1"
         return prURL
 
     def getParameterNode(self):

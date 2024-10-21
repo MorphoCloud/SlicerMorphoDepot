@@ -7,8 +7,14 @@
     <x>0</x>
     <y>0</y>
     <width>325</width>
-    <height>522</height>
+    <height>1004</height>
    </rect>
+  </property>
+  <property name="sizePolicy">
+   <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+    <horstretch>0</horstretch>
+    <verstretch>0</verstretch>
+   </sizepolicy>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
@@ -16,14 +22,70 @@
      <property name="text">
       <string>Assigned Issues</string>
      </property>
-     <layout class="QFormLayout" name="formLayout_2">
-      <item row="1" column="0">
-       <widget class="QListWidget" name="issueList"/>
-      </item>
-      <item row="0" column="0">
+     <layout class="QVBoxLayout" name="verticalLayout_2">
+      <item>
        <widget class="QPushButton" name="refreshIssuesButton">
         <property name="text">
-         <string>Refresh</string>
+         <string>Refresh issues</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QListWidget" name="issueList"/>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="ctkCollapsibleButton" name="forkManagementCollapsibleButton">
+     <property name="text">
+      <string>Fork management</string>
+     </property>
+     <layout class="QFormLayout" name="formLayout_4">
+      <item row="4" column="0">
+       <widget class="QPushButton" name="reviewButton">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
+        <property name="toolTip">
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Notify the repository owner that your pull request addressing the issue is ready for review.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+        </property>
+        <property name="text">
+         <string>Request PR review</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QPushButton" name="commitButton">
+        <property name="enabled">
+         <bool>true</bool>
+        </property>
+        <property name="toolTip">
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Saves your issue's segmentation to your local repository checkout and pushes the file to your fork on github.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+        </property>
+        <property name="text">
+         <string>Commit and Push</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0" colspan="2">
+       <widget class="QLineEdit" name="messageTitle">
+        <property name="toolTip">
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Description of the changes you made (summary, required)&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0" colspan="2">
+       <widget class="QTextEdit" name="messageBody">
+        <property name="toolTip">
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;More details about what's changed in this commit (optional)&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="label">
+        <property name="text">
+         <string>Commit message</string>
         </property>
        </widget>
       </item>
@@ -31,36 +93,29 @@
     </widget>
    </item>
    <item>
-    <widget class="ctkCollapsibleButton" name="operationssCollapsibleButton">
+    <widget class="ctkCollapsibleButton" name="prCollapsibleButton">
      <property name="text">
-      <string>Operations</string>
+      <string>Review pull requests</string>
      </property>
-     <layout class="QFormLayout" name="formLayout_4">
-      <item row="0" column="0">
-       <widget class="QPushButton" name="checkpointButton">
-        <property name="enabled">
-         <bool>false</bool>
-        </property>
-        <property name="toolTip">
-         <string>Commit current segmentation to your github fork of the source repository</string>
+     <property name="collapsed">
+      <bool>false</bool>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayout_3">
+      <item>
+       <widget class="QPushButton" name="prRefreshButton">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
         </property>
         <property name="text">
-         <string>Save checkpoint</string>
+         <string>Refresh pull requests</string>
         </property>
        </widget>
       </item>
-      <item row="1" column="0">
-       <widget class="QPushButton" name="reviewButton">
-        <property name="enabled">
-         <bool>false</bool>
-        </property>
-        <property name="toolTip">
-         <string>Create a pull request to merge your segmentation into the source repository</string>
-        </property>
-        <property name="text">
-         <string>Save and request review</string>
-        </property>
-       </widget>
+      <item>
+       <widget class="QListWidget" name="prList"/>
       </item>
      </layout>
     </widget>

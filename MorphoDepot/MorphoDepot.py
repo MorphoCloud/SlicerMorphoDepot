@@ -146,16 +146,6 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self._parameterNodeGuiTag = None
         self.issuesByItem = {}
 
-    def updateIssueList(self):
-        self.ui.issueList.clear()
-        self.issuesByItem = {}
-        issueList = self.logic.issueList()
-        for issue in issueList:
-            issueTitle = f"{issue['repository']['nameWithOwner']}, #{issue['number']}: {issue['title']}"
-            item = qt.QListWidgetItem(issueTitle)
-            self.issuesByItem[item] = issue
-            self.ui.issueList.addItem(item)
-
     def setup(self) -> None:
         """Called when the user opens the module the first time and the widget is initialized."""
         ScriptedLoadableModuleWidget.setup(self)
@@ -175,17 +165,20 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # in batch mode, without a graphical user interface.
         self.logic = MorphoDepotLogic()
 
+        # only allow picking directories
+        self.ui.repoDirectory.filters = self.ui.repoDirectory.filters ^ self.ui.repoDirectory.Files
+
         repoDir = slicer.util.settingsValue("MorphoDepot/repoDirectory", "")
         if repoDir == "":
             repoDir = qt.QStandardPaths.writableLocation(qt.QStandardPaths.DocumentsLocation)
         self.ui.repoDirectory.currentPath = repoDir
 
+        self.ui.forkManagementCollapsibleButton.enabled = False
+
         # Connections
         self.ui.issueList.itemDoubleClicked.connect(self.onItemDoubleClicked)
-        self.ui.checkpointButton.clicked.connect(self.logic.issueCheckpoint)
+        self.ui.commitButton.clicked.connect(self.onCommit)
         self.ui.reviewButton.clicked.connect(self.issueRequestReview)
-
-        # Buttons
         self.ui.refreshIssuesButton.connect("clicked(bool)", self.updateIssueList)
 
     def cleanup(self) -> None:
@@ -201,24 +194,55 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         """Called each time the user opens a different module."""
         pass
 
+    def updateIssueList(self):
+        slicer.util.showStatusMessage(f"Updating issues")
+        self.ui.issueList.clear()
+        self.issuesByItem = {}
+        issueList = self.logic.issueList()
+        for issue in issueList:
+            issueTitle = f"{issue['repository']['nameWithOwner']}, #{issue['number']}: {issue['title']}"
+            item = qt.QListWidgetItem(issueTitle)
+            self.issuesByItem[item] = issue
+            self.ui.issueList.addItem(item)
+        slicer.util.showStatusMessage(f"{len(issueList)} issues")
+
     def onItemDoubleClicked(self, item):
+        slicer.util.showStatusMessage(f"Loading {item.text()}")
         repoDirectory = self.ui.repoDirectory.currentPath
         issue = self.issuesByItem[item]
         if slicer.util.confirmOkCancelDisplay("Close scene and load issue?"):
             slicer.mrmlScene.Clear()
             self.logic.loadIssue(issue, repoDirectory)
-            self.ui.checkpointButton.enabled = True
-            self.ui.reviewButton.enabled = True
+            self.ui.forkManagementCollapsibleButton.enabled = True
             slicer.util.showStatusMessage(f"Start segmenting {item.text()}")
+
+    def onCommit(self):
+        slicer.util.showStatusMessage(f"Commiting and pushing")
+        message = self.ui.messageTitle.text
+        if message == "":
+            slicer.util.messageBox("You must provide a commit message (title required, body optional)")
+        body = self.ui.messageBody.plainText
+        if body != "":
+            message = f"{message}\n\n{body}"
+        if self.logic.commitAndPush(message):
+            self.ui.messageTitle.text = ""
+            self.ui.messageBody.plainText = ""
+            slicer.util.showStatusMessage(f"Commit and push complete")
+        else:
+            path = self.ui.repoDirectory.currentPath
+            slicer.util.messageBox(f"Commit failed.\nYour repository conflicts with what's on github.  Copy your work from {path} and then delete the local repository folder and restart the issues.")
+            slicer.util.showStatusMessage(f"Commit and push failed")
+
+
+    def issueRequestReview(self):
+        """Create a checkpoint if need, then mark issue as ready for review"""
+        slicer.util.showStatusMessage(f"Creating pull request")
+        prURL = self.logic.issueRequestReviewURL()
+        qt.QDesktopServices().openUrl(qt.QUrl(prURL))
 
     def onRepoDirectoryChanged(self):
         qt.QSettings().setValue("MorphoDepot/repoDirectory", self.ui.repoDirectory.currentPath)
 
-    def issueRequestReview(self):
-        """Create a checkpoint if need, then mark issue as ready for review"""
-        print("issueRequestReview")
-        prURL = self.logic.issueRequestReviewURL()
-        qt.QDesktopServices().openUrl(qt.QUrl(prURL))
 
 #
 # MorphoDepotLogic
@@ -245,14 +269,20 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     def gh(self, command):
         process = slicer.util.launchConsoleProcess(["gh"] + command.split())
         result = process.communicate()
-        print(result)
         if result[1] != None:
             logging.error("gh command failed")
             logging.error(result[1])
         return result[0]
 
     def issueList(self):
-        issueList = json.loads(self.gh("search issues --assignee=@me --state open --json repository,title,number"))
+        repoList = json.loads(self.gh("search repos --json owner,name --include-forks true -- topic:morphodepot"))
+        print(repoList)
+        issueList = []
+        for repo in repoList:
+            repoID = f"{repo['owner']['login']}/{repo['name']}"
+            print(f"search issues --assignee=@me --state open --repo {repoID} --json repository,title,number")
+            issueList += json.loads(self.gh(f"search issues --assignee=@me --state open --repo {repoID} --json repository,title,number"))
+        print(issueList)
         return issueList
 
     def repositoryList(self):
@@ -265,6 +295,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         sourceRepository = issue['repository']['nameWithOwner']
         repositoryName = issue['repository']['name']
         localDirectory = f"{repoDirectory}/{repositoryName}"
+        issueNumber = issue['number']
+        branchName=f"issue-{issueNumber}"
 
         if not os.path.exists(localDirectory):
             if repositoryName not in self.repositoryList():
@@ -272,21 +304,27 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             self.gh(f"repo clone {repositoryName} {localDirectory}")
         self.localRepo = git.Repo(localDirectory)
 
-        issueNumber = issue['number']
-        branchName=f"issue-{issueNumber}"
-
         issueBranch = None
         for branch in self.localRepo.branches:
             if branch.name == branchName:
                 issueBranch = branch
                 break
 
-        if not issueBranch:
-            self.localRepo.git.checkout("HEAD", b=branchName)
-        else:
+        if issueBranch:
+            print("Using existing", branchName)
             self.localRepo.git.checkout(branchName)
-        origin = self.localRepo.remotes.origin
-        origin.pull('main')
+        else:
+            print("Making new branch")
+            originBranches = self.localRepo.remotes.origin.fetch()
+            originBranchIDs = [ob.name for ob in originBranches]
+            originBranchID = f"origin/{branchName}"
+            if originBranchID in originBranchIDs:
+                print("Checking out existing from origin")
+                self.localRepo.git.checkout("-b", originBranchID)
+            else:
+                print("Nothing local, nothing in origin so make new branch")
+                self.localRepo.git.branch(branchName)
+                self.localRepo.git.checkout(branchName)
 
         # TODO: move from single volume and color table file to segmentation specification json
 
@@ -335,20 +373,29 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         editorWidget.parameterSetNode.SetAndObserveSegmentationNode(self.segmentationNode)
         editorWidget.parameterSetNode.SetAndObserveSourceVolumeNode(volumeNode)
 
-    def issueCheckpoint(self):
+    def commitAndPush(self, message):
         """Create a PR if needed and push current segmentation
         Mark the PR as WIP
         """
-        print("issueCheckpoint")
         if not self.segmentationNode:
-            return
+            return False
         slicer.util.saveNode(self.segmentationNode, self.segmentationPath)
         self.localRepo.index.add([self.segmentationPath])
-        self.localRepo.index.commit("New segmentation") # TODO: make this a text entry field
+        self.localRepo.index.commit(message)
 
         branchName = self.localRepo.active_branch.name
         remote = self.localRepo.remote(name="origin")
-        remote.push(branchName)
+
+        # Workaround for missing origin.push().raise_if_error() in 3.1.14
+        # (see https://github.com/gitpython-developers/GitPython/issues/621):
+        # https://github.com/gitpython-developers/GitPython/issues/621
+        pushInfoList = remote.push(branchName)
+        for pi in pushInfoList:
+            for flag in [pi.REJECTED, pi.REMOTE_REJECTED, pi.REMOTE_FAILURE, pi.ERROR]:
+                if pi.flags & flag:
+                    logging.error(f"Push failed with {flag}")
+                    return False
+        return True
 
     def issueRequestReviewURL(self):
         if not self.segmentationNode:

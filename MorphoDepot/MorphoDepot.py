@@ -303,26 +303,27 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 self.gh(f"repo fork {sourceRepository} --remote=true --clone=false")
             self.gh(f"repo clone {repositoryName} {localDirectory}")
         self.localRepo = git.Repo(localDirectory)
+        originBranches = self.localRepo.remotes.origin.fetch()
+        originBranchIDs = [ob.name for ob in originBranches]
+        originBranchID = f"origin/{branchName}"
 
-        issueBranch = None
+        localIssueBranch = None
         for branch in self.localRepo.branches:
-            if branch.name == branchName:
-                issueBranch = branch
+            if branch.name == branchName or branch.name == originBranchID:
+                localIssueBranch = branch
                 break
 
-        if issueBranch:
-            print("Using existing", branchName)
-            self.localRepo.git.checkout(branchName)
+        if localIssueBranch:
+            print("Using existing local", localIssueBranch)
+            self.localRepo.git.checkout(localIssueBranch)
         else:
             print("Making new branch")
-            originBranches = self.localRepo.remotes.origin.fetch()
-            originBranchIDs = [ob.name for ob in originBranches]
-            originBranchID = f"origin/{branchName}"
             if originBranchID in originBranchIDs:
                 print("Checking out existing from origin")
                 self.localRepo.git.checkout("-b", originBranchID)
             else:
-                print("Nothing local, nothing in origin so make new branch")
+                print("Nothing local or remote, nothing in origin so make new branch", branchName)
+                self.localRepo.git.checkout("origin/main")
                 self.localRepo.git.branch(branchName)
                 self.localRepo.git.checkout(branchName)
 

@@ -39,10 +39,10 @@
    <item>
     <widget class="ctkCollapsibleButton" name="forkManagementCollapsibleButton">
      <property name="text">
-      <string>Fork management</string>
+      <string>Issue</string>
      </property>
      <layout class="QFormLayout" name="formLayout_4">
-      <item row="4" column="0">
+      <item row="5" column="0">
        <widget class="QPushButton" name="reviewButton">
         <property name="enabled">
          <bool>true</bool>
@@ -55,7 +55,7 @@
         </property>
        </widget>
       </item>
-      <item row="3" column="0">
+      <item row="4" column="0">
        <widget class="QPushButton" name="commitButton">
         <property name="enabled">
          <bool>true</bool>
@@ -68,24 +68,31 @@
         </property>
        </widget>
       </item>
-      <item row="1" column="0" colspan="2">
+      <item row="2" column="0" colspan="2">
        <widget class="QLineEdit" name="messageTitle">
         <property name="toolTip">
          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Description of the changes you made (summary, required)&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
         </property>
        </widget>
       </item>
-      <item row="2" column="0" colspan="2">
+      <item row="3" column="0" colspan="2">
        <widget class="QTextEdit" name="messageBody">
         <property name="toolTip">
          <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;More details about what's changed in this commit (optional)&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
         </property>
        </widget>
       </item>
-      <item row="0" column="0">
+      <item row="1" column="0">
        <widget class="QLabel" name="label">
         <property name="text">
-         <string>Commit message</string>
+         <string>Commit message:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="0">
+       <widget class="QLabel" name="label_2">
+        <property name="text">
+         <string>No issue loaded</string>
         </property>
        </widget>
       </item>
@@ -95,14 +102,14 @@
    <item>
     <widget class="ctkCollapsibleButton" name="prCollapsibleButton">
      <property name="text">
-      <string>Review pull requests</string>
+      <string>Pull requests</string>
      </property>
      <property name="collapsed">
       <bool>false</bool>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_3">
       <item>
-       <widget class="QPushButton" name="prRefreshButton">
+       <widget class="QPushButton" name="refreshPRsButton">
         <property name="sizePolicy">
          <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
           <horstretch>0</horstretch>

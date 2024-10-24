@@ -33,98 +33,19 @@ class MorphoDepot(ScriptedLoadableModule):
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = _("MorphoDepot")  # TODO: make this more human readable by adding spaces
-        # TODO: set categories (folders where the module shows up in the module selector)
+        self.parent.title = _("MorphoDepot")
         self.parent.categories = [translate("qSlicerAbstractCoreModule", "SlicerMorph")]
-        self.parent.dependencies = []  # TODO: add here list of module names that this module requires
-        self.parent.contributors = ["Steve Pieper (Isomics, Inc.)"]  # TODO: replace with "Firstname Lastname (Organization)"
-        # TODO: update with short description of the module and a link to online module documentation
-        # _() function marks text as translatable to other languages
+        self.parent.dependencies = []
+        self.parent.contributors = ["Steve Pieper (Isomics, Inc.)"]
         self.parent.helpText = _("""
 This module is the client side of the MorphoDepot collaborative segmentation tool.
 """)
-        # TODO: replace with organization, grant and thanks
         self.parent.acknowledgementText = _("""
+This was developed as part of the SlicerMorhpCloud project funded by the NSF.
 This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc., Andras Lasso, PerkLab,
 and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
 """)
 
-        # Additional initialization step after application startup is complete
-        slicer.app.connect("startupCompleted()", registerSampleData)
-
-
-#
-# Register sample data sets in Sample Data module
-#
-
-
-def registerSampleData():
-    """Add data sets to Sample Data module."""
-    # It is always recommended to provide sample data for users to make it easy to try the module,
-    # but if no sample data is available then this method (and associated startupCompeted signal connection) can be removed.
-
-    import SampleData
-
-    iconsPath = os.path.join(os.path.dirname(__file__), "Resources/Icons")
-
-    # To ensure that the source code repository remains small (can be downloaded and installed quickly)
-    # it is recommended to store data sets that are larger than a few MB in a Github release.
-
-    # MorphoDepot1
-    SampleData.SampleDataLogic.registerCustomSampleDataSource(
-        # Category and sample name displayed in Sample Data module
-        category="MorphoDepot",
-        sampleName="MorphoDepot1",
-        # Thumbnail should have size of approximately 260x280 pixels and stored in Resources/Icons folder.
-        # It can be created by Screen Capture module, "Capture all views" option enabled, "Number of images" set to "Single".
-        thumbnailFileName=os.path.join(iconsPath, "MorphoDepot1.png"),
-        # Download URL and target file name
-        uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
-        fileNames="MorphoDepot1.nrrd",
-        # Checksum to ensure file integrity. Can be computed by this command:
-        #  import hashlib; print(hashlib.sha256(open(filename, "rb").read()).hexdigest())
-        checksums="SHA256:998cb522173839c78657f4bc0ea907cea09fd04e44601f17c82ea27927937b95",
-        # This node name will be used when the data set is loaded
-        nodeNames="MorphoDepot1",
-    )
-
-    # MorphoDepot2
-    SampleData.SampleDataLogic.registerCustomSampleDataSource(
-        # Category and sample name displayed in Sample Data module
-        category="MorphoDepot",
-        sampleName="MorphoDepot2",
-        thumbnailFileName=os.path.join(iconsPath, "MorphoDepot2.png"),
-        # Download URL and target file name
-        uris="https://github.com/Slicer/SlicerTestingData/releases/download/SHA256/1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
-        fileNames="MorphoDepot2.nrrd",
-        checksums="SHA256:1a64f3f422eb3d1c9b093d1a18da354b13bcf307907c66317e2463ee530b7a97",
-        # This node name will be used when the data set is loaded
-        nodeNames="MorphoDepot2",
-    )
-
-
-#
-# MorphoDepotParameterNode
-#
-
-
-@parameterNodeWrapper
-class MorphoDepotParameterNode:
-    """
-    The parameters needed by module.
-
-    inputVolume - The volume to threshold.
-    imageThreshold - The value at which to threshold the input volume.
-    invertThreshold - If true, will invert the threshold.
-    thresholdedVolume - The output volume that will contain the thresholded volume.
-    invertedVolume - The output volume that will contain the inverted thresholded volume.
-    """
-
-    inputVolume: vtkMRMLScalarVolumeNode
-    imageThreshold: Annotated[float, WithinRange(-100, 500)] = 100
-    invertThreshold: bool = False
-    thresholdedVolume: vtkMRMLScalarVolumeNode
-    invertedVolume: vtkMRMLScalarVolumeNode
 
 
 #
@@ -142,9 +63,8 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         ScriptedLoadableModuleWidget.__init__(self, parent)
         VTKObservationMixin.__init__(self)  # needed for parameter node observation
         self.logic = None
-        self._parameterNode = None
-        self._parameterNodeGuiTag = None
         self.issuesByItem = {}
+        self.prsByItem = {}
 
     def setup(self) -> None:
         """Called when the user opens the module the first time and the widget is initialized."""
@@ -165,8 +85,8 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         # in batch mode, without a graphical user interface.
         self.logic = MorphoDepotLogic()
 
-        # only allow picking directories
-        self.ui.repoDirectory.filters = self.ui.repoDirectory.filters ^ self.ui.repoDirectory.Files
+        # only allow picking directories (bitwise AND NOT file filter bit)
+        self.ui.repoDirectory.filters = self.ui.repoDirectory.filters & ~self.ui.repoDirectory.Files
 
         repoDir = slicer.util.settingsValue("MorphoDepot/repoDirectory", "")
         if repoDir == "":
@@ -176,10 +96,11 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.forkManagementCollapsibleButton.enabled = False
 
         # Connections
-        self.ui.issueList.itemDoubleClicked.connect(self.onItemDoubleClicked)
+        self.ui.issueList.itemDoubleClicked.connect(self.onIssueDoubleClicked)
         self.ui.commitButton.clicked.connect(self.onCommit)
-        self.ui.reviewButton.clicked.connect(self.issueRequestReview)
+        self.ui.reviewButton.clicked.connect(self.onRequestReview)
         self.ui.refreshIssuesButton.connect("clicked(bool)", self.updateIssueList)
+        self.ui.refreshPRsButton.connect("clicked(bool)", self.updatePRList)
 
     def cleanup(self) -> None:
         """Called when the application closes and the module widget is destroyed."""
@@ -206,7 +127,20 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.issueList.addItem(item)
         slicer.util.showStatusMessage(f"{len(issueList)} issues")
 
-    def onItemDoubleClicked(self, item):
+    def updatePRList(self):
+        slicer.util.showStatusMessage(f"Updating PRs")
+        self.ui.prList.clear()
+        self.prsByItem = {}
+        prList = self.logic.prList()
+        for pr in prList:
+            prStatus = 'draft' if pr['isDraft'] == 'true' else 'ready for review'
+            prTitle = f"{pr['repository']['nameWithOwner']}: {pr['title']} ({prStatus})"
+            item = qt.QListWidgetItem(prTitle)
+            self.prsByItem[item] = pr
+            self.ui.prList.addItem(item)
+        slicer.util.showStatusMessage(f"{len(prList)} prs")
+
+    def onIssueDoubleClicked(self, item):
         slicer.util.showStatusMessage(f"Loading {item.text()}")
         repoDirectory = self.ui.repoDirectory.currentPath
         issue = self.issuesByItem[item]
@@ -214,6 +148,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             slicer.mrmlScene.Clear()
             self.logic.loadIssue(issue, repoDirectory)
             self.ui.forkManagementCollapsibleButton.enabled = True
+            self.ui.currentIssueLabel.text = f"Issue: {item.text()}"
             slicer.util.showStatusMessage(f"Start segmenting {item.text()}")
 
     def onCommit(self):
@@ -228,17 +163,17 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.ui.messageTitle.text = ""
             self.ui.messageBody.plainText = ""
             slicer.util.showStatusMessage(f"Commit and push complete")
+            self.updatePRList()
         else:
             path = self.ui.repoDirectory.currentPath
             slicer.util.messageBox(f"Commit failed.\nYour repository conflicts with what's on github.  Copy your work from {path} and then delete the local repository folder and restart the issues.")
             slicer.util.showStatusMessage(f"Commit and push failed")
 
-
-    def issueRequestReview(self):
+    def onRequestReview(self):
         """Create a checkpoint if need, then mark issue as ready for review"""
-        slicer.util.showStatusMessage(f"Creating pull request")
-        prURL = self.logic.issueRequestReviewURL()
-        qt.QDesktopServices().openUrl(qt.QUrl(prURL))
+        slicer.util.showStatusMessage(f"Marking pull request for review")
+        prURL = self.logic.requestReview()
+        self.updatePRList()
 
     def onRepoDirectoryChanged(self):
         qt.QSettings().setValue("MorphoDepot/repoDirectory", self.ui.repoDirectory.currentPath)
@@ -267,23 +202,35 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.localRepo = None
 
     def gh(self, command):
+        """Execute `gh` command.  Multiline input string accepted for readablity.
+        Do not include `gh` in the command string"""
+        command.replace("\n", " ")
         process = slicer.util.launchConsoleProcess(["gh"] + command.split())
         result = process.communicate()
         if result[1] != None:
+            # TODO: this doesn't catch errors - need to check process return code
             logging.error("gh command failed")
             logging.error(result[1])
         return result[0]
 
+    def morphoRepos(self):
+        return json.loads(self.gh("search repos --json owner,name --include-forks true -- topic:morphodepot"))
+
     def issueList(self):
-        repoList = json.loads(self.gh("search repos --json owner,name --include-forks true -- topic:morphodepot"))
-        print(repoList)
+        repoList = self.morphoRepos()
         issueList = []
         for repo in repoList:
             repoID = f"{repo['owner']['login']}/{repo['name']}"
-            print(f"search issues --assignee=@me --state open --repo {repoID} --json repository,title,number")
             issueList += json.loads(self.gh(f"search issues --assignee=@me --state open --repo {repoID} --json repository,title,number"))
-        print(issueList)
         return issueList
+
+    def prList(self):
+        repoList = self.morphoRepos()
+        prList = []
+        for repo in repoList:
+            repoID = f"{repo['owner']['login']}/{repo['name']}"
+            prList += json.loads(self.gh(f"search prs --state open --repo {repoID} --author=@me --json repository,title,isDraft,updatedAt"))
+        return prList
 
     def repositoryList(self):
         repositories = json.loads(self.gh("repo list --json name"))
@@ -291,12 +238,11 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         return repositoryList
 
     def loadIssue(self, issue, repoDirectory):
-
-        sourceRepository = issue['repository']['nameWithOwner']
-        repositoryName = issue['repository']['name']
-        localDirectory = f"{repoDirectory}/{repositoryName}"
         issueNumber = issue['number']
         branchName=f"issue-{issueNumber}"
+        sourceRepository = issue['repository']['nameWithOwner']
+        repositoryName = issue['repository']['name']
+        localDirectory = f"{repoDirectory}/{repositoryName}-{branchName}"
 
         if not os.path.exists(localDirectory):
             if repositoryName not in self.repositoryList():
@@ -309,7 +255,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
         localIssueBranch = None
         for branch in self.localRepo.branches:
-            if branch.name == branchName or branch.name == originBranchID:
+            if branch.name == branchName:
                 localIssueBranch = branch
                 break
 
@@ -320,13 +266,14 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             print("Making new branch")
             if originBranchID in originBranchIDs:
                 print("Checking out existing from origin")
-                self.localRepo.git.checkout("-b", originBranchID)
+                self.localRepo.git.execute(f"git checkout --track {originBranchID}".split())
             else:
                 print("Nothing local or remote, nothing in origin so make new branch", branchName)
                 self.localRepo.git.checkout("origin/main")
                 self.localRepo.git.branch(branchName)
                 self.localRepo.git.checkout(branchName)
 
+        # TODO: factor out populating scene for use in PR review
         # TODO: move from single volume and color table file to segmentation specification json
 
         colorPath = glob.glob(f"{self.localRepo.working_dir}/*.ctbl")[0]
@@ -374,9 +321,30 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         editorWidget.parameterSetNode.SetAndObserveSegmentationNode(self.segmentationNode)
         editorWidget.parameterSetNode.SetAndObserveSourceVolumeNode(volumeNode)
 
+    def nameWithOwner(self, remote):
+        branchName = self.localRepo.active_branch.name
+        repo = self.localRepo.remote(name=remote)
+        repoURL = list(repo.urls)[0]
+        repoNameWithOwner = "/".join(upstreamURL.split("/")[-2:]).split(".")[0]
+        return repoNameWithOwner
+
+    def issuePR(self):
+        """Find the issue for the issue currently being worked on or None if there isn't one"""
+        branchName = self.localRepo.active_branch.name
+        upstreamNameWithOwner = self.nameWithOwner("upstream")
+        upstreamOwner = upstreamNameWithOwner.split("/")[0]
+        originNameWithOwner = self.nameWithOwner("origin")
+        originOwner = originNameWithOwner.split("/")[0]
+        origin = self.localRepo.remote(name="origin")
+        issuePR = None
+        for pr in self.prList():
+            if pr['repository']['nameWithOwner'] == upstreamID and pr['title'] == branchName:
+                issuePR = pr
+        return issuePR
+
     def commitAndPush(self, message):
         """Create a PR if needed and push current segmentation
-        Mark the PR as WIP
+        Mark the PR as a draft
         """
         if not self.segmentationNode:
             return False
@@ -396,13 +364,54 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 if pi.flags & flag:
                     logging.error(f"Push failed with {flag}")
                     return False
+        
+        # create a PR if needed
+        if not self.issuePR():
+            issueNumber = branchName.split("-")[1]
+            upstreamNameWithOwner = self.nameWithOwner("upstream")
+            originNameWithOwner = self.nameWithOwner("origin")
+            originOwner = originNameWithOwner.split("/")[0]
+            self.gh(f"""
+                pr create
+                    --draft
+                    --repo {upstreamNameWithOwner} 
+                    --base main
+                    --title {branchName}
+                    --body 'Fixes #{issueNumber}'
+                    --head {originOwner}:{branchName}
+                """.replace("\n"," "))
         return True
 
-    def issueRequestReviewURL(self):
-        if not self.segmentationNode:
-            return ""
-        self.issueCheckpoint()
+    def requestReview(self):
+        pr = self.issuePR()
+        issueName = self.localRepo.active_branch.name
+        issueNumber = issueName.split("-")[1]
+        upstreamNameWithOwner = self.nameWithOwner("upstream")
+        upstreamOwner = upstreamNameWithOwner.split("/")[0]
+        prs = json.loads(self.gh(f"""
+                pr list 
+                    --repo {upstreamNameWithOwner} 
+                    --json title,reviewRequests
+                """.replace("\n"," ")))
+        ownerIsReviewer = False
+        for pr in prs:
+            if pr['title'] == issueName:
+                for reviewRequest in pr['reviewRequests']:
+                    if subRequest['login'] == upstreamOwner:
+                        ownerIsReviewer = True
+        if not ownerIsReviewer:
+            self.gh(f"""
+                pr edit {issueNumber}
+                    --repo {upstreamNameWithOwner} 
+                    --add-reviewer {originOwner}
+                """.replace("\n"," "))
+        self.gh(f"""
+            pr ready {issueNumber}
+                --repo {upstreamNameWithOwner} 
+            """.replace("\n"," "))
 
+
+    def issueRequestReviewURL_old(self):
         localRepo = self.localRepo
         issueName = localRepo.active_branch.name
 
@@ -417,46 +426,6 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         prURL = f"https://github.com/{upstreamURLFragment}/compare/main...{originRepo}:{issueName}?expand=1"
         return prURL
 
-    def getParameterNode(self):
-        return MorphoDepotParameterNode(super().getParameterNode())
-
-    def process(self,
-                inputVolume: vtkMRMLScalarVolumeNode,
-                outputVolume: vtkMRMLScalarVolumeNode,
-                imageThreshold: float,
-                invert: bool = False,
-                showResult: bool = True) -> None:
-        """
-        Run the processing algorithm.
-        Can be used without GUI widget.
-        :param inputVolume: volume to be thresholded
-        :param outputVolume: thresholding result
-        :param imageThreshold: values above/below this threshold will be set to 0
-        :param invert: if True then values above the threshold will be set to 0, otherwise values below are set to 0
-        :param showResult: show output volume in slice viewers
-        """
-
-        if not inputVolume or not outputVolume:
-            raise ValueError("Input or output volume is invalid")
-
-        import time
-
-        startTime = time.time()
-        logging.info("Processing started")
-
-        # Compute the thresholded output volume using the "Threshold Scalar Volume" CLI module
-        cliParams = {
-            "InputVolume": inputVolume.GetID(),
-            "OutputVolume": outputVolume.GetID(),
-            "ThresholdValue": imageThreshold,
-            "ThresholdType": "Above" if invert else "Below",
-        }
-        cliNode = slicer.cli.run(slicer.modules.thresholdscalarvolume, None, cliParams, wait_for_completion=True, update_display=showResult)
-        # We don't need the CLI module node anymore, remove it to not clutter the scene with it
-        slicer.mrmlScene.RemoveNode(cliNode)
-
-        stopTime = time.time()
-        logging.info(f"Processing completed in {stopTime-startTime:.2f} seconds")
 
 
 #
@@ -493,36 +462,5 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
         """
 
         self.delayDisplay("Starting the test")
-
-        # Get/create input data
-
-        import SampleData
-
-        registerSampleData()
-        inputVolume = SampleData.downloadSample("MorphoDepot1")
-        self.delayDisplay("Loaded test data set")
-
-        inputScalarRange = inputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(inputScalarRange[0], 0)
-        self.assertEqual(inputScalarRange[1], 695)
-
-        outputVolume = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLScalarVolumeNode")
-        threshold = 100
-
-        # Test the module logic
-
-        logic = MorphoDepotLogic()
-
-        # Test algorithm with non-inverted threshold
-        logic.process(inputVolume, outputVolume, threshold, True)
-        outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-        self.assertEqual(outputScalarRange[1], threshold)
-
-        # Test algorithm with inverted threshold
-        logic.process(inputVolume, outputVolume, threshold, False)
-        outputScalarRange = outputVolume.GetImageData().GetScalarRange()
-        self.assertEqual(outputScalarRange[0], inputScalarRange[0])
-        self.assertEqual(outputScalarRange[1], inputScalarRange[1])
 
         self.delayDisplay("Test passed")

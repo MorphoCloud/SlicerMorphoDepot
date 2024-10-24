@@ -145,10 +145,10 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         repoDirectory = self.ui.repoDirectory.currentPath
         issue = self.issuesByItem[item]
         if slicer.util.confirmOkCancelDisplay("Close scene and load issue?"):
+            self.ui.currentIssueLabel.text = f"Issue: {item.text()}"
             slicer.mrmlScene.Clear()
             self.logic.loadIssue(issue, repoDirectory)
             self.ui.forkManagementCollapsibleButton.enabled = True
-            self.ui.currentIssueLabel.text = f"Issue: {item.text()}"
             slicer.util.showStatusMessage(f"Start segmenting {item.text()}")
 
     def onCommit(self):
@@ -204,13 +204,18 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     def gh(self, command):
         """Execute `gh` command.  Multiline input string accepted for readablity.
         Do not include `gh` in the command string"""
-        command.replace("\n", " ")
-        process = slicer.util.launchConsoleProcess(["gh"] + command.split())
+        if command.__class__() == "":
+            commandList = command.replace("\n", " ").split()
+        else:
+            commandList = command
+        process = slicer.util.launchConsoleProcess(["gh"] + commandList)
         result = process.communicate()
-        if result[1] != None:
-            # TODO: this doesn't catch errors - need to check process return code
-            logging.error("gh command failed")
-            logging.error(result[1])
+        if process.returncode != 0:
+            logging.error("gh command failed:")
+            logging.error(commandList)
+            logging.error(result)
+            print(commandList)
+            print(result)
         return result[0]
 
     def morphoRepos(self):
@@ -325,7 +330,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         branchName = self.localRepo.active_branch.name
         repo = self.localRepo.remote(name=remote)
         repoURL = list(repo.urls)[0]
-        repoNameWithOwner = "/".join(upstreamURL.split("/")[-2:]).split(".")[0]
+        repoNameWithOwner = "/".join(repoURL.split("/")[-2:]).split(".")[0]
         return repoNameWithOwner
 
     def issuePR(self):
@@ -335,10 +340,9 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         upstreamOwner = upstreamNameWithOwner.split("/")[0]
         originNameWithOwner = self.nameWithOwner("origin")
         originOwner = originNameWithOwner.split("/")[0]
-        origin = self.localRepo.remote(name="origin")
         issuePR = None
         for pr in self.prList():
-            if pr['repository']['nameWithOwner'] == upstreamID and pr['title'] == branchName:
+            if pr['repository']['nameWithOwner'] == upstreamNameWithOwner and pr['title'] == branchName:
                 issuePR = pr
         return issuePR
 
@@ -377,7 +381,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                     --repo {upstreamNameWithOwner} 
                     --base main
                     --title {branchName}
-                    --body 'Fixes #{issueNumber}'
+                    --body Fixes
+                    --body #{issueNumber}
                     --head {originOwner}:{branchName}
                 """.replace("\n"," "))
         return True
@@ -388,6 +393,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         issueNumber = issueName.split("-")[1]
         upstreamNameWithOwner = self.nameWithOwner("upstream")
         upstreamOwner = upstreamNameWithOwner.split("/")[0]
+        originNameWithOwner = self.nameWithOwner("origin")
+        originOwner = originNameWithOwner.split("/")[0]
         prs = json.loads(self.gh(f"""
                 pr list 
                     --repo {upstreamNameWithOwner} 

@@ -18,18 +18,18 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
+    <widget class="QPushButton" name="refreshButton">
+     <property name="text">
+      <string>Refresh Github</string>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="ctkCollapsibleButton" name="issuesCollapsibleButton">
      <property name="text">
       <string>Assigned Issues</string>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_2">
-      <item>
-       <widget class="QPushButton" name="refreshIssuesButton">
-        <property name="text">
-         <string>Refresh issues</string>
-        </property>
-       </widget>
-      </item>
       <item>
        <widget class="QListWidget" name="issueList"/>
       </item>
@@ -108,19 +108,6 @@
       <bool>false</bool>
      </property>
      <layout class="QVBoxLayout" name="verticalLayout_3">
-      <item>
-       <widget class="QPushButton" name="refreshPRsButton">
-        <property name="sizePolicy">
-         <sizepolicy hsizetype="Minimum" vsizetype="Fixed">
-          <horstretch>0</horstretch>
-          <verstretch>0</verstretch>
-         </sizepolicy>
-        </property>
-        <property name="text">
-         <string>Refresh pull requests</string>
-        </property>
-       </widget>
-      </item>
       <item>
        <widget class="QListWidget" name="prList"/>
       </item>

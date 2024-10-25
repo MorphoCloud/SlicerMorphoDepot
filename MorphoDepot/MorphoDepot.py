@@ -99,8 +99,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.issueList.itemDoubleClicked.connect(self.onIssueDoubleClicked)
         self.ui.commitButton.clicked.connect(self.onCommit)
         self.ui.reviewButton.clicked.connect(self.onRequestReview)
-        self.ui.refreshIssuesButton.connect("clicked(bool)", self.updateIssueList)
-        self.ui.refreshPRsButton.connect("clicked(bool)", self.updatePRList)
+        self.ui.refreshButton.connect("clicked(bool)", self.onRefresh)
 
     def cleanup(self) -> None:
         """Called when the application closes and the module widget is destroyed."""
@@ -114,6 +113,10 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def exit(self) -> None:
         """Called each time the user opens a different module."""
         pass
+
+    def onRefresh(self):
+        self.updateIssueList()
+        self.updatePRList()
 
     def updateIssueList(self):
         slicer.util.showStatusMessage(f"Updating issues")

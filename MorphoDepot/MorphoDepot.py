@@ -91,6 +91,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         repoDir = slicer.util.settingsValue("MorphoDepot/repoDirectory", "")
         if repoDir == "":
             repoDir = qt.QStandardPaths.writableLocation(qt.QStandardPaths.DocumentsLocation)
+            self.onRepoDirectoryChanged()
         self.ui.repoDirectory.currentPath = repoDir
 
         self.ui.forkManagementCollapsibleButton.enabled = False
@@ -100,6 +101,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.commitButton.clicked.connect(self.onCommit)
         self.ui.reviewButton.clicked.connect(self.onRequestReview)
         self.ui.refreshButton.connect("clicked(bool)", self.onRefresh)
+        self.ui.repoDirectory.connect("currentPathChanged(QString)", self.onRepoDirectoryChanged)
 
     def cleanup(self) -> None:
         """Called when the application closes and the module widget is destroyed."""
@@ -134,10 +136,10 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         slicer.util.showStatusMessage(f"Updating PRs")
         self.ui.prList.clear()
         self.prsByItem = {}
-        prList = self.logic.prList()
+        prList = self.logic.prList(role="segmenter")
         for pr in prList:
             prStatus = 'draft' if pr['isDraft'] else 'ready for review'
-            prTitle = f"{pr['repository']['nameWithOwner']}: {pr['title']} ({prStatus})"
+            prTitle = f"{pr['repository']}: {pr['title']} ({prStatus})"
             item = qt.QListWidgetItem(prTitle)
             self.prsByItem[item] = pr
             self.ui.prList.addItem(item)
@@ -213,6 +215,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             commandList = command
         else:
             logging.error("command must be string or list")
+        print(" ".join(commandList))
         process = slicer.util.launchConsoleProcess(["gh"] + commandList)
         result = process.communicate()
         if process.returncode != 0:
@@ -234,12 +237,20 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             issueList += json.loads(self.gh(f"search issues --assignee=@me --state open --repo {repoID} --json repository,title,number"))
         return issueList
 
-    def prList(self):
+    def prList(self, role="segmenter"):
         repoList = self.morphoRepos()
+        if role == "segmenter":
+            searchString = "--author=@me"
+        elif role == "reviewer":
+            searchString = "review-requested:@me"
+        jsonFields = "title,isDraft,updatedAt,headRepositoryOwner,headRepository"
         prList = []
         for repo in repoList:
             repoID = f"{repo['owner']['login']}/{repo['name']}"
-            prList += json.loads(self.gh(f"search prs --state open --repo {repoID} --author=@me --json repository,title,isDraft,updatedAt"))
+            repoPRList = json.loads(self.gh(f"pr list --repo {repoID} --json {jsonFields} --search {searchString}"))
+            for repoPR in repoPRList:
+                repoPR['repository'] = repoID
+            prList += repoPRList
         return prList
 
     def repositoryList(self):
@@ -283,10 +294,30 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 self.localRepo.git.branch(branchName)
                 self.localRepo.git.checkout(branchName)
 
-        # TODO: factor out populating scene for use in PR review
-        # TODO: move from single volume and color table file to segmentation specification json
+        self.loadFromLocalRepository()
 
-        colorPath = glob.glob(f"{self.localRepo.working_dir}/*.ctbl")[0]
+    def loadPR(self, pr, repoDirectory):
+        branchName = pr['title']
+        repositoryName = f"{pr['headRepositoryOwner']['login']}/{pr['headRepository']['name']}"
+        localDirectory = f"{repoDirectory}/{pr['headRepository']['name']}-{branchName}"
+
+        if not os.path.exists(localDirectory):
+            self.gh(f"repo clone {repositoryName} {localDirectory}")
+        self.localRepo = git.Repo(localDirectory)
+        self.localRepo.remotes.origin.fetch()
+        self.localRepo.git.checkout(branchName)
+        self.localRepo.remotes.origin.pull()
+
+        self.loadFromLocalRepository()
+
+
+    def loadFromLocalRepository(self):
+
+        localDirectory = self.localRepo.working_dir
+        branchName = self.localRepo.active_branch.name
+
+        # TODO: move from single volume and color table file to segmentation specification json
+        colorPath = glob.glob(f"{localDirectory}/*.ctbl")[0]
         colorNode = slicer.util.loadColorTable(colorPath)
 
         # TODO: move from single volume file to segmentation specification json
@@ -308,7 +339,6 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         pluginHandlerSingleton.pluginByName("Default").switchToModule("SegmentEditor")
         editorWidget = slicer.modules.segmenteditor.widgetRepresentation().self()
 
-        # TODO: specify in the issue which segments in the color table should be included in issue segmentation
         if branchName in segmentationNodesByName.keys():
             self.segmentationNode = segmentationNodesByName[branchName]
         else:
@@ -316,6 +346,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             self.segmentationNode.CreateDefaultDisplayNodes()
             self.segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(volumeNode)
             self.segmentationNode.SetName(branchName)
+            # TODO: specify in the issue which segments in the color table should be included in issue segmentation
             for colorIndex in range(colorNode.GetNumberOfColors()):
                 color = [0]*4
                 colorNode.GetColor(colorIndex, color)
@@ -324,9 +355,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 segment.SetColor(color[:3])
                 segment.SetName(name)
                 self.segmentationNode.GetSegmentation().AddSegment(segment)
-
-        self.segmentationPath = f"{localDirectory}/{branchName}.seg.nrrd"
-        slicer.util.saveNode(self.segmentationNode, self.segmentationPath)
+            self.segmentationPath = f"{localDirectory}/{branchName}.seg.nrrd"
+            slicer.util.saveNode(self.segmentationNode, self.segmentationPath)
 
         editorWidget.parameterSetNode.SetAndObserveSegmentationNode(self.segmentationNode)
         editorWidget.parameterSetNode.SetAndObserveSourceVolumeNode(volumeNode)
@@ -373,7 +403,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 if pi.flags & flag:
                     logging.error(f"Push failed with {flag}")
                     return False
-        
+
         # create a PR if needed
         if not self.issuePR():
             issueNumber = branchName.split("-")[1]
@@ -383,7 +413,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             commandList = f"""
                 pr create
                 --draft
-                --repo {upstreamNameWithOwner} 
+                --repo {upstreamNameWithOwner}
                 --base main
                 --title {branchName}
                 --head {originOwner}:{branchName}
@@ -401,8 +431,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         originNameWithOwner = self.nameWithOwner("origin")
         originOwner = originNameWithOwner.split("/")[0]
         prs = json.loads(self.gh(f"""
-                pr list 
-                    --repo {upstreamNameWithOwner} 
+                pr list
+                    --repo {upstreamNameWithOwner}
                     --json title,reviewRequests,number
                 """))
         ownerIsReviewer = False
@@ -416,12 +446,12 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         if not ownerIsReviewer:
             self.gh(f"""
                 pr edit {prNumber}
-                    --repo {upstreamNameWithOwner} 
+                    --repo {upstreamNameWithOwner}
                     --add-reviewer {upstreamOwner}
                 """)
         self.gh(f"""
             pr ready {prNumber}
-                --repo {upstreamNameWithOwner} 
+                --repo {upstreamNameWithOwner}
             """)
 
 

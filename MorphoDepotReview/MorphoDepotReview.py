@@ -20,6 +20,8 @@ from slicer.parameterNodeWrapper import (
 
 from slicer import vtkMRMLScalarVolumeNode
 
+import MorphoDepot
+
 
 #
 # MorphoDepotReview
@@ -35,10 +37,10 @@ class MorphoDepotReview(ScriptedLoadableModule):
         ScriptedLoadableModule.__init__(self, parent)
         self.parent.title = _("MorphoDepotReview")
         self.parent.categories = [translate("qSlicerAbstractCoreModule", "SlicerMorph")]
-        self.parent.dependencies = []
+        self.parent.dependencies = ["MorphoDepot"]
         self.parent.contributors = ["Steve Pieper (Isomics, Inc.)"]
         self.parent.helpText = _("""
-This module is the client side of the MorphoDepotReview collaborative segmentation tool.
+This module is the client side review tool of the MorphoDepotReview collaborative segmentation tool.
 """)
         self.parent.acknowledgementText = _("""
 This was developed as part of the SlicerMorhpCloud project funded by the NSF.
@@ -63,7 +65,6 @@ class MorphoDepotReviewWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         ScriptedLoadableModuleWidget.__init__(self, parent)
         VTKObservationMixin.__init__(self)  # needed for parameter node observation
         self.logic = None
-        self.issuesByItem = {}
         self.prsByItem = {}
 
     def setup(self) -> None:
@@ -81,102 +82,53 @@ class MorphoDepotReviewWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         # "setMRMLScene(vtkMRMLScene*)" slot.
         uiWidget.setMRMLScene(slicer.mrmlScene)
 
-        # Create logic class. Logic implements all computations that should be possible to run
-        # in batch mode, without a graphical user interface.
-        self.logic = MorphoDepotReviewLogic()
+        # Uses MorphoDepot logic so all related methods are together
+        self.logic = MorphoDepot.MorphoDepotLogic()
 
-        # only allow picking directories (bitwise AND NOT file filter bit)
-        self.ui.repoDirectory.filters = self.ui.repoDirectory.filters & ~self.ui.repoDirectory.Files
-
-        repoDir = slicer.util.settingsValue("MorphoDepotReview/repoDirectory", "")
-        if repoDir == "":
-            repoDir = qt.QStandardPaths.writableLocation(qt.QStandardPaths.DocumentsLocation)
-        self.ui.repoDirectory.currentPath = repoDir
-
-        self.ui.forkManagementCollapsibleButton.enabled = False
+        self.ui.prCollapsibleButton.enabled = False
 
         # Connections
-        self.ui.issueList.itemDoubleClicked.connect(self.onIssueDoubleClicked)
-        self.ui.commitButton.clicked.connect(self.onCommit)
-        self.ui.reviewButton.clicked.connect(self.onRequestReview)
-        self.ui.refreshIssuesButton.connect("clicked(bool)", self.updateIssueList)
-        self.ui.refreshPRsButton.connect("clicked(bool)", self.updatePRList)
-
-    def cleanup(self) -> None:
-        """Called when the application closes and the module widget is destroyed."""
-        self.removeObservers()
-
-    def enter(self) -> None:
-        """Called each time the user opens this module."""
-        # Make sure parameter node exists and observed
-        pass
-
-    def exit(self) -> None:
-        """Called each time the user opens a different module."""
-        pass
-
-    def updateIssueList(self):
-        slicer.util.showStatusMessage(f"Updating issues")
-        self.ui.issueList.clear()
-        self.issuesByItem = {}
-        issueList = self.logic.issueList()
-        for issue in issueList:
-            issueTitle = f"{issue['repository']['nameWithOwner']}, #{issue['number']}: {issue['title']}"
-            item = qt.QListWidgetItem(issueTitle)
-            self.issuesByItem[item] = issue
-            self.ui.issueList.addItem(item)
-        slicer.util.showStatusMessage(f"{len(issueList)} issues")
+        self.ui.refreshButton.connect("clicked(bool)", self.updatePRList)
+        self.ui.prList.itemDoubleClicked.connect(self.onPRDoubleClicked)
+        self.ui.requestChangesButton.clicked.connect(self.onRequestChanges)
+        self.ui.approveButton.clicked.connect(self.onApprove)
 
     def updatePRList(self):
         slicer.util.showStatusMessage(f"Updating PRs")
         self.ui.prList.clear()
         self.prsByItem = {}
-        prList = self.logic.prList()
+        prList = self.logic.prList(role="reviewer")
         for pr in prList:
             prStatus = 'draft' if pr['isDraft'] else 'ready for review'
-            prTitle = f"{pr['repository']['nameWithOwner']}: {pr['title']} ({prStatus})"
+            prTitle = f"{pr['repository']}: {pr['title']} ({prStatus})"
             item = qt.QListWidgetItem(prTitle)
             self.prsByItem[item] = pr
             self.ui.prList.addItem(item)
         slicer.util.showStatusMessage(f"{len(prList)} prs")
 
-    def onIssueDoubleClicked(self, item):
+    def onPRDoubleClicked(self, item):
         slicer.util.showStatusMessage(f"Loading {item.text()}")
-        repoDirectory = self.ui.repoDirectory.currentPath
-        issue = self.issuesByItem[item]
-        if slicer.util.confirmOkCancelDisplay("Close scene and load issue?"):
-            self.ui.currentIssueLabel.text = f"Issue: {item.text()}"
+        repoDirectory = slicer.util.settingsValue("MorphoDepot/repoDirectory", "")
+        pr = self.prsByItem[item]
+        if slicer.util.confirmOkCancelDisplay("Close scene and load PR?"):
+            self.ui.currentPRLabel.text = f"PR: {item.text()}"
             slicer.mrmlScene.Clear()
-            self.logic.loadIssue(issue, repoDirectory)
-            self.ui.forkManagementCollapsibleButton.enabled = True
-            slicer.util.showStatusMessage(f"Start segmenting {item.text()}")
+            self.logic.loadPR(pr, repoDirectory)
+            self.ui.prCollapsibleButton.enabled = True
+            slicer.util.showStatusMessage(f"Start reviewing {item.text()}")
 
-    def onCommit(self):
-        slicer.util.showStatusMessage(f"Commiting and pushing")
-        message = self.ui.messageTitle.text
-        if message == "":
-            slicer.util.messageBox("You must provide a commit message (title required, body optional)")
-        body = self.ui.messageBody.plainText
-        if body != "":
-            message = f"{message}\n\n{body}"
-        if self.logic.commitAndPush(message):
-            self.ui.messageTitle.text = ""
-            self.ui.messageBody.plainText = ""
-            slicer.util.showStatusMessage(f"Commit and push complete")
-            self.updatePRList()
-        else:
-            path = self.ui.repoDirectory.currentPath
-            slicer.util.messageBox(f"Commit failed.\nYour repository conflicts with what's on github.  Copy your work from {path} and then delete the local repository folder and restart the issues.")
-            slicer.util.showStatusMessage(f"Commit and push failed")
-
-    def onRequestReview(self):
-        """Create a checkpoint if need, then mark issue as ready for review"""
-        slicer.util.showStatusMessage(f"Marking pull request for review")
-        prURL = self.logic.requestReview()
+    def onRequestChanges(self):
+        slicer.util.showStatusMessage(f"Requesting changes")
+        message = self.ui.reviewMessage.plainText
+        self.logic.requestChanges(message)
+        self.ui.reviewMessage.plainText = ""
+        slicer.util.showStatusMessage(f"Changes requested")
         self.updatePRList()
 
-    def onRepoDirectoryChanged(self):
-        qt.QSettings().setValue("MorphoDepotReview/repoDirectory", self.ui.repoDirectory.currentPath)
+    def onApprove(self):
+        slicer.util.showStatusMessage(f"Approving")
+        prURL = self.logic.approvePR()
+        self.updatePRList()
 
 
 #
@@ -185,241 +137,13 @@ class MorphoDepotReviewWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
 
 
 class MorphoDepotReviewLogic(ScriptedLoadableModuleLogic):
-    """This class should implement all the actual
-    computation done by your module.  The interface
-    should be such that other python code can import
-    this class and make use of the functionality without
-    requiring an instance of the Widget.
-    Uses ScriptedLoadableModuleLogic base class, available at:
-    https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
+    """
+    No logic here - rely on MorphoDepot logic
     """
 
     def __init__(self) -> None:
         """Called when the logic class is instantiated. Can be used for initializing member variables."""
         ScriptedLoadableModuleLogic.__init__(self)
-        self.segmentationNode = None
-        self.segmentationPath = ""
-        self.localRepo = None
-
-    def gh(self, command):
-        """Execute `gh` command.  Multiline input string accepted for readablity.
-        Do not include `gh` in the command string"""
-        if command.__class__() == "":
-            commandList = command.replace("\n", " ").split()
-        elif command.__class__() == []:
-            commandList = command
-        else:
-            logging.error("command must be string or list")
-        process = slicer.util.launchConsoleProcess(["gh"] + commandList)
-        result = process.communicate()
-        if process.returncode != 0:
-            logging.error("gh command failed:")
-            logging.error(commandList)
-            logging.error(result)
-            print(commandList)
-            print(result)
-        return result[0]
-
-    def morphoRepos(self):
-        return json.loads(self.gh("search repos --json owner,name --include-forks true -- topic:morphodepot"))
-
-    def issueList(self):
-        repoList = self.morphoRepos()
-        issueList = []
-        for repo in repoList:
-            repoID = f"{repo['owner']['login']}/{repo['name']}"
-            issueList += json.loads(self.gh(f"search issues --assignee=@me --state open --repo {repoID} --json repository,title,number"))
-        return issueList
-
-    def prList(self):
-        repoList = self.morphoRepos()
-        prList = []
-        for repo in repoList:
-            repoID = f"{repo['owner']['login']}/{repo['name']}"
-            prList += json.loads(self.gh(f"search prs --state open --repo {repoID} --author=@me --json repository,title,isDraft,updatedAt"))
-        return prList
-
-    def repositoryList(self):
-        repositories = json.loads(self.gh("repo list --json name"))
-        repositoryList = [r['name'] for r in repositories]
-        return repositoryList
-
-    def loadIssue(self, issue, repoDirectory):
-        issueNumber = issue['number']
-        branchName=f"issue-{issueNumber}"
-        sourceRepository = issue['repository']['nameWithOwner']
-        repositoryName = issue['repository']['name']
-        localDirectory = f"{repoDirectory}/{repositoryName}-{branchName}"
-
-        if not os.path.exists(localDirectory):
-            if repositoryName not in self.repositoryList():
-                self.gh(f"repo fork {sourceRepository} --remote=true --clone=false")
-            self.gh(f"repo clone {repositoryName} {localDirectory}")
-        self.localRepo = git.Repo(localDirectory)
-        originBranches = self.localRepo.remotes.origin.fetch()
-        originBranchIDs = [ob.name for ob in originBranches]
-        originBranchID = f"origin/{branchName}"
-
-        localIssueBranch = None
-        for branch in self.localRepo.branches:
-            if branch.name == branchName:
-                localIssueBranch = branch
-                break
-
-        if localIssueBranch:
-            print("Using existing local", localIssueBranch)
-            self.localRepo.git.checkout(localIssueBranch)
-        else:
-            print("Making new branch")
-            if originBranchID in originBranchIDs:
-                print("Checking out existing from origin")
-                self.localRepo.git.execute(f"git checkout --track {originBranchID}".split())
-            else:
-                print("Nothing local or remote, nothing in origin so make new branch", branchName)
-                self.localRepo.git.checkout("origin/main")
-                self.localRepo.git.branch(branchName)
-                self.localRepo.git.checkout(branchName)
-
-        # TODO: factor out populating scene for use in PR review
-        # TODO: move from single volume and color table file to segmentation specification json
-
-        colorPath = glob.glob(f"{self.localRepo.working_dir}/*.ctbl")[0]
-        colorNode = slicer.util.loadColorTable(colorPath)
-
-        # TODO: move from single volume file to segmentation specification json
-        volumePath = f"{self.localRepo.working_dir}/master_volume"
-        volumeURL = open(volumePath).read().strip()
-        print(volumeURL)
-        nrrdPath = slicer.app.temporaryPath+"/volume.nrrd"
-        slicer.util.downloadFile(volumeURL, nrrdPath)
-        volumeNode = slicer.util.loadVolume(nrrdPath)
-
-        # Load all segmentations
-        segmentationNodesByName = {}
-        for segmentationPath in glob.glob(f"{localDirectory}/*.seg.nrrd"):
-            name = os.path.split(segmentationPath)[1].split(".")[0]
-            segmentationNodesByName[name] = slicer.util.loadSegmentation(segmentationPath)
-
-        # Switch to Segment Editor module
-        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
-        pluginHandlerSingleton.pluginByName("Default").switchToModule("SegmentEditor")
-        editorWidget = slicer.modules.segmenteditor.widgetRepresentation().self()
-
-        # TODO: specify in the issue which segments in the color table should be included in issue segmentation
-        if branchName in segmentationNodesByName.keys():
-            self.segmentationNode = segmentationNodesByName[branchName]
-        else:
-            self.segmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
-            self.segmentationNode.CreateDefaultDisplayNodes()
-            self.segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(volumeNode)
-            self.segmentationNode.SetName(branchName)
-            for colorIndex in range(colorNode.GetNumberOfColors()):
-                color = [0]*4
-                colorNode.GetColor(colorIndex, color)
-                name = colorNode.GetColorName(colorIndex)
-                segment = slicer.vtkSegment()
-                segment.SetColor(color[:3])
-                segment.SetName(name)
-                self.segmentationNode.GetSegmentation().AddSegment(segment)
-
-        self.segmentationPath = f"{localDirectory}/{branchName}.seg.nrrd"
-        slicer.util.saveNode(self.segmentationNode, self.segmentationPath)
-
-        editorWidget.parameterSetNode.SetAndObserveSegmentationNode(self.segmentationNode)
-        editorWidget.parameterSetNode.SetAndObserveSourceVolumeNode(volumeNode)
-
-    def nameWithOwner(self, remote):
-        branchName = self.localRepo.active_branch.name
-        repo = self.localRepo.remote(name=remote)
-        repoURL = list(repo.urls)[0]
-        repoNameWithOwner = "/".join(repoURL.split("/")[-2:]).split(".")[0]
-        return repoNameWithOwner
-
-    def issuePR(self):
-        """Find the issue for the issue currently being worked on or None if there isn't one"""
-        branchName = self.localRepo.active_branch.name
-        upstreamNameWithOwner = self.nameWithOwner("upstream")
-        upstreamOwner = upstreamNameWithOwner.split("/")[0]
-        originNameWithOwner = self.nameWithOwner("origin")
-        originOwner = originNameWithOwner.split("/")[0]
-        issuePR = None
-        for pr in self.prList():
-            if pr['repository']['nameWithOwner'] == upstreamNameWithOwner and pr['title'] == branchName:
-                issuePR = pr
-        return issuePR
-
-    def commitAndPush(self, message):
-        """Create a PR if needed and push current segmentation
-        Mark the PR as a draft
-        """
-        if not self.segmentationNode:
-            return False
-        slicer.util.saveNode(self.segmentationNode, self.segmentationPath)
-        self.localRepo.index.add([self.segmentationPath])
-        self.localRepo.index.commit(message)
-
-        branchName = self.localRepo.active_branch.name
-        remote = self.localRepo.remote(name="origin")
-
-        # Workaround for missing origin.push().raise_if_error() in 3.1.14
-        # (see https://github.com/gitpython-developers/GitPython/issues/621):
-        # https://github.com/gitpython-developers/GitPython/issues/621
-        pushInfoList = remote.push(branchName)
-        for pi in pushInfoList:
-            for flag in [pi.REJECTED, pi.REMOTE_REJECTED, pi.REMOTE_FAILURE, pi.ERROR]:
-                if pi.flags & flag:
-                    logging.error(f"Push failed with {flag}")
-                    return False
-        
-        # create a PR if needed
-        if not self.issuePR():
-            issueNumber = branchName.split("-")[1]
-            upstreamNameWithOwner = self.nameWithOwner("upstream")
-            originNameWithOwner = self.nameWithOwner("origin")
-            originOwner = originNameWithOwner.split("/")[0]
-            commandList = f"""
-                pr create
-                --draft
-                --repo {upstreamNameWithOwner} 
-                --base main
-                --title {branchName}
-                --head {originOwner}:{branchName}
-            """.replace("\n"," ").split()
-            commandList += ["--body", f" Fixes #{issueNumber}"]
-            self.gh(commandList)
-        return True
-
-    def requestReview(self):
-        pr = self.issuePR()
-        issueName = self.localRepo.active_branch.name
-        issueNumber = issueName.split("-")[1]
-        upstreamNameWithOwner = self.nameWithOwner("upstream")
-        upstreamOwner = upstreamNameWithOwner.split("/")[0]
-        originNameWithOwner = self.nameWithOwner("origin")
-        originOwner = originNameWithOwner.split("/")[0]
-        prs = json.loads(self.gh(f"""
-                pr list 
-                    --repo {upstreamNameWithOwner} 
-                    --json title,reviewRequests,number
-                """))
-        ownerIsReviewer = False
-        prNumber = ""
-        for pr in prs:
-            if pr['title'] == issueName:
-                prNumber = pr['number']
-                for reviewRequest in pr['reviewRequests']:
-                    if subRequest['login'] == upstreamOwner:
-                        ownerIsReviewer = True
-        if not ownerIsReviewer:
-            self.gh(f"""
-                pr edit {prNumber}
-                    --repo {upstreamNameWithOwner} 
-                    --add-reviewer {upstreamOwner}
-                """)
-        self.gh(f"""
-            pr ready {prNumber}
-                --repo {upstreamNameWithOwner} 
-            """)
 
 
 #
@@ -444,17 +168,8 @@ class MorphoDepotReviewTest(ScriptedLoadableModuleTest):
         self.test_MorphoDepotReview1()
 
     def test_MorphoDepotReview1(self):
-        """Ideally you should have several levels of tests.  At the lowest level
-        tests should exercise the functionality of the logic with different inputs
-        (both valid and invalid).  At higher levels your tests should emulate the
-        way the user would interact with your code and confirm that it still works
-        the way you intended.
-        One of the most important features of the tests is that it should alert other
-        developers when their changes will have an impact on the behavior of your
-        module.  For example, if a developer removes a feature that you depend on,
-        your test should break so they know that the feature is needed.
         """
-
+        No testing here because it's very hard to test the server side
+        """
         self.delayDisplay("Starting the test")
-
         self.delayDisplay("Test passed")

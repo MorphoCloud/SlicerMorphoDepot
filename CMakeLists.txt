@@ -20,6 +20,7 @@ include(${Slicer_USE_FILE})
 #-----------------------------------------------------------------------------
 # Extension modules
 add_subdirectory(MorphoDepot)
+add_subdirectory(MorphoDepotReview)
 ## NEXT_MODULE
 
 #-----------------------------------------------------------------------------

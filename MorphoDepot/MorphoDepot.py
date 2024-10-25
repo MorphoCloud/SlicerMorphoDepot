@@ -133,7 +133,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.prsByItem = {}
         prList = self.logic.prList()
         for pr in prList:
-            prStatus = 'draft' if pr['isDraft'] == 'true' else 'ready for review'
+            prStatus = 'draft' if pr['isDraft'] else 'ready for review'
             prTitle = f"{pr['repository']['nameWithOwner']}: {pr['title']} ({prStatus})"
             item = qt.QListWidgetItem(prTitle)
             self.prsByItem[item] = pr
@@ -206,8 +206,10 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         Do not include `gh` in the command string"""
         if command.__class__() == "":
             commandList = command.replace("\n", " ").split()
-        else:
+        elif command.__class__() == []:
             commandList = command
+        else:
+            logging.error("command must be string or list")
         process = slicer.util.launchConsoleProcess(["gh"] + commandList)
         result = process.communicate()
         if process.returncode != 0:
@@ -375,16 +377,16 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             upstreamNameWithOwner = self.nameWithOwner("upstream")
             originNameWithOwner = self.nameWithOwner("origin")
             originOwner = originNameWithOwner.split("/")[0]
-            self.gh(f"""
+            commandList = f"""
                 pr create
-                    --draft
-                    --repo {upstreamNameWithOwner} 
-                    --base main
-                    --title {branchName}
-                    --body Fixes
-                    --body #{issueNumber}
-                    --head {originOwner}:{branchName}
-                """.replace("\n"," "))
+                --draft
+                --repo {upstreamNameWithOwner} 
+                --base main
+                --title {branchName}
+                --head {originOwner}:{branchName}
+            """.replace("\n"," ").split()
+            commandList += ["--body", f" Fixes #{issueNumber}"]
+            self.gh(commandList)
         return True
 
     def requestReview(self):
@@ -398,41 +400,26 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         prs = json.loads(self.gh(f"""
                 pr list 
                     --repo {upstreamNameWithOwner} 
-                    --json title,reviewRequests
-                """.replace("\n"," ")))
+                    --json title,reviewRequests,number
+                """))
         ownerIsReviewer = False
+        prNumber = ""
         for pr in prs:
             if pr['title'] == issueName:
+                prNumber = pr['number']
                 for reviewRequest in pr['reviewRequests']:
                     if subRequest['login'] == upstreamOwner:
                         ownerIsReviewer = True
         if not ownerIsReviewer:
             self.gh(f"""
-                pr edit {issueNumber}
+                pr edit {prNumber}
                     --repo {upstreamNameWithOwner} 
-                    --add-reviewer {originOwner}
-                """.replace("\n"," "))
+                    --add-reviewer {upstreamOwner}
+                """)
         self.gh(f"""
-            pr ready {issueNumber}
+            pr ready {prNumber}
                 --repo {upstreamNameWithOwner} 
-            """.replace("\n"," "))
-
-
-    def issueRequestReviewURL_old(self):
-        localRepo = self.localRepo
-        issueName = localRepo.active_branch.name
-
-        origin = localRepo.remote(name="origin")
-        originURL = list(origin.urls)[0]
-        originRepo = ":".join(originURL.split("/")[-2:]).split(".")[0]
-        upstream = localRepo.remote(name="upstream")
-        upstreamURL = list(upstream.urls)[0]
-        upstreamURLFragment = "/".join(upstreamURL.split("/")[-2:]).split(".")[0]
-
-        # https://github.com/SlicerMorph/MD_E15/compare/main...pieper923:MD_E15:issue-1?expand=1
-        prURL = f"https://github.com/{upstreamURLFragment}/compare/main...{originRepo}:{issueName}?expand=1"
-        return prURL
-
+            """)
 
 
 #

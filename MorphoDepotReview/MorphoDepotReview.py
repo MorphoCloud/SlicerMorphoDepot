@@ -129,6 +129,7 @@ class MorphoDepotReviewWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
     def onApprove(self):
         slicer.util.showStatusMessage(f"Approving")
         prURL = self.logic.approvePR()
+        self.ui.reviewMessage.plainText = ""
         self.updatePRList()
 
 

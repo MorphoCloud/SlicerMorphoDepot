@@ -287,7 +287,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 break
 
         if localIssueBranch:
-            logging.debug("Using existing local", localIssueBranch)
+            logging.debug("Using existing local repository %s", localIssueBranch)
             self.localRepo.git.checkout(localIssueBranch)
         else:
             logging.debug("Making new branch")
@@ -295,7 +295,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 logging.debug("Checking out existing from origin")
                 self.localRepo.git.execute(f"git checkout --track {originBranchID}".split())
             else:
-                logging.debug("Nothing local or remote, nothing in origin so make new branch", branchName)
+                logging.debug("Nothing local or remote, nothing in origin so make new branch %s", branchName)
                 self.localRepo.git.checkout("origin/main")
                 self.localRepo.git.branch(branchName)
                 self.localRepo.git.checkout(branchName)
@@ -321,6 +321,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
         localDirectory = self.localRepo.working_dir
         branchName = self.localRepo.active_branch.name
+        upstreamNameWithOwner = self.nameWithOwner("upstream")
 
         # TODO: move from single volume and color table file to segmentation specification json
         colorPath = glob.glob(f"{localDirectory}/*.ctbl")[0]
@@ -329,7 +330,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         # TODO: move from single volume file to segmentation specification json
         volumePath = f"{self.localRepo.working_dir}/master_volume"
         volumeURL = open(volumePath).read().strip()
-        nrrdPath = slicer.app.temporaryPath+"/volume.nrrd"
+        nrrdPath = f"{slicer.app.temporaryPath}/{upstreamNameWithOwner.replace('/', '-')}-volume.nrrd"
         slicer.util.downloadFile(volumeURL, nrrdPath)
         volumeNode = slicer.util.loadVolume(nrrdPath)
 

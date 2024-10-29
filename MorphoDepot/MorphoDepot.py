@@ -66,6 +66,11 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.issuesByItem = {}
         self.prsByItem = {}
 
+    def ghProgressMethod(self, message):
+        logging.debug(message)
+        slicer.util.showStatusMessage(message)
+        slicer.app.processEvents(qt.QEventLoop.ExcludeUserInputEvents)
+
     def setup(self) -> None:
         """Called when the user opens the module the first time and the widget is initialized."""
         ScriptedLoadableModuleWidget.setup(self)
@@ -83,7 +88,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Create logic class. Logic implements all computations that should be possible to run
         # in batch mode, without a graphical user interface.
-        self.logic = MorphoDepotLogic()
+        self.logic = MorphoDepotLogic(ghProgressMethod=self.ghProgressMethod)
 
         # only allow picking directories (bitwise AND NOT file filter bit)
         self.ui.repoDirectory.filters = self.ui.repoDirectory.filters & ~self.ui.repoDirectory.Files
@@ -139,7 +144,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         prList = self.logic.prList(role="segmenter")
         for pr in prList:
             prStatus = 'draft' if pr['isDraft'] else 'ready for review'
-            prTitle = f"{pr['repository']}: {pr['title']} ({prStatus})"
+            prTitle = f"{pr['repository']['nameWithOwner']}: {pr['title']} ({prStatus})"
             item = qt.QListWidgetItem(prTitle)
             self.prsByItem[item] = pr
             self.ui.prList.addItem(item)
@@ -199,12 +204,13 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
-    def __init__(self) -> None:
+    def __init__(self, ghProgressMethod = None) -> None:
         """Called when the logic class is instantiated. Can be used for initializing member variables."""
         ScriptedLoadableModuleLogic.__init__(self)
         self.segmentationNode = None
         self.segmentationPath = ""
         self.localRepo = None
+        self.ghProgressMethod = ghProgressMethod if ghProgressMethod else lambda *args : None
 
     def gh(self, command):
         """Execute `gh` command.  Multiline input string accepted for readablity.
@@ -215,18 +221,18 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             commandList = command
         else:
             logging.error("command must be string or list")
-        print(" ".join(commandList))
+        self.ghProgressMethod(" ".join(commandList))
         process = slicer.util.launchConsoleProcess(["gh"] + commandList)
         result = process.communicate()
         if process.returncode != 0:
             logging.error("gh command failed:")
             logging.error(commandList)
             logging.error(result)
-            print(commandList)
-            print(result)
+        self.ghProgressMethod("gh command finished")
         return result[0]
 
     def morphoRepos(self):
+        # TODO: generalize for other topics
         return json.loads(self.gh("search repos --json owner,name --include-forks true -- topic:morphodepot"))
 
     def issueList(self):
@@ -243,13 +249,13 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             searchString = "--author=@me"
         elif role == "reviewer":
             searchString = "review-requested:@me"
-        jsonFields = "title,isDraft,updatedAt,headRepositoryOwner,headRepository"
+        jsonFields = "title,number,isDraft,updatedAt,headRepositoryOwner,headRepository"
         prList = []
         for repo in repoList:
             repoID = f"{repo['owner']['login']}/{repo['name']}"
             repoPRList = json.loads(self.gh(f"pr list --repo {repoID} --json {jsonFields} --search {searchString}"))
             for repoPR in repoPRList:
-                repoPR['repository'] = repoID
+                repoPR['repository'] = {'nameWithOwner': repoID}
             prList += repoPRList
         return prList
 
@@ -281,15 +287,15 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 break
 
         if localIssueBranch:
-            print("Using existing local", localIssueBranch)
+            logging.debug("Using existing local", localIssueBranch)
             self.localRepo.git.checkout(localIssueBranch)
         else:
-            print("Making new branch")
+            logging.debug("Making new branch")
             if originBranchID in originBranchIDs:
-                print("Checking out existing from origin")
+                logging.debug("Checking out existing from origin")
                 self.localRepo.git.execute(f"git checkout --track {originBranchID}".split())
             else:
-                print("Nothing local or remote, nothing in origin so make new branch", branchName)
+                logging.debug("Nothing local or remote, nothing in origin so make new branch", branchName)
                 self.localRepo.git.checkout("origin/main")
                 self.localRepo.git.branch(branchName)
                 self.localRepo.git.checkout(branchName)
@@ -323,7 +329,6 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         # TODO: move from single volume file to segmentation specification json
         volumePath = f"{self.localRepo.working_dir}/master_volume"
         volumeURL = open(volumePath).read().strip()
-        print(volumeURL)
         nrrdPath = slicer.app.temporaryPath+"/volume.nrrd"
         slicer.util.downloadFile(volumeURL, nrrdPath)
         volumeNode = slicer.util.loadVolume(nrrdPath)
@@ -365,19 +370,25 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         branchName = self.localRepo.active_branch.name
         repo = self.localRepo.remote(name=remote)
         repoURL = list(repo.urls)[0]
-        repoNameWithOwner = "/".join(repoURL.split("/")[-2:]).split(".")[0]
+        if repoURL.find("@") != -1:
+            # git ssh prototocol
+            repoURL = "/".join(repoURL.split(":"))
+            repoNameWithOwner = "/".join(repoURL.split("/")[-2:]).split(".")[0]
+        else:
+            # https protocol
+            repoNameWithOwner = "/".join(repoURL.split("/")[-2:]).split(".")[0]
         return repoNameWithOwner
 
-    def issuePR(self):
+    def issuePR(self, role="segmenter"):
         """Find the issue for the issue currently being worked on or None if there isn't one"""
         branchName = self.localRepo.active_branch.name
         upstreamNameWithOwner = self.nameWithOwner("upstream")
         upstreamOwner = upstreamNameWithOwner.split("/")[0]
-        originNameWithOwner = self.nameWithOwner("origin")
-        originOwner = originNameWithOwner.split("/")[0]
         issuePR = None
-        for pr in self.prList():
-            if pr['repository']['nameWithOwner'] == upstreamNameWithOwner and pr['title'] == branchName:
+        prs = self.prList(role=role)
+        for pr in prs:
+            prRepoNameWithOwner = pr['repository']['nameWithOwner']
+            if prRepoNameWithOwner == upstreamNameWithOwner and pr['title'] == branchName:
                 issuePR = pr
         return issuePR
 
@@ -425,7 +436,6 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     def requestReview(self):
         pr = self.issuePR()
         issueName = self.localRepo.active_branch.name
-        issueNumber = issueName.split("-")[1]
         upstreamNameWithOwner = self.nameWithOwner("upstream")
         upstreamOwner = upstreamNameWithOwner.split("/")[0]
         originNameWithOwner = self.nameWithOwner("origin")
@@ -453,6 +463,42 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             pr ready {prNumber}
                 --repo {upstreamNameWithOwner}
             """)
+
+    def requestChanges(self, message=""):
+        pr = self.issuePR(role="reviewer")
+        upstreamNameWithOwner = self.nameWithOwner("upstream")
+        commandList = f"""
+            pr review {pr['number']}
+                --request-changes
+                --repo {upstreamNameWithOwner}
+        """.replace("\n"," ").split()
+        if message != "":
+            commandList += ["--body", message]
+        self.gh(commandList)
+        self.gh(f"""
+            pr ready {pr['number']}
+                --undo
+                --repo {upstreamNameWithOwner}
+            """)
+
+    def approvePR(self, message=""):
+        pr = self.issuePR(role="reviewer")
+        upstreamNameWithOwner = self.nameWithOwner("upstream")
+        commandList = f"""
+            pr review {pr['number']}
+                --approve
+                --repo {upstreamNameWithOwner}
+        """.replace("\n"," ").split()
+        if message != "":
+            commandList += ["--body", message]
+        self.gh(commandList)
+        commandList = f"""
+            pr merge {pr['number']}
+                --repo {upstreamNameWithOwner}
+                --squash
+        """.replace("\n"," ").split()
+        commandList += ["--body", "Merging and closing"]
+        self.gh(commandList)
 
 
 #

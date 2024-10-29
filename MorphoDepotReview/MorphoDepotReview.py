@@ -82,8 +82,9 @@ class MorphoDepotReviewWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         # "setMRMLScene(vtkMRMLScene*)" slot.
         uiWidget.setMRMLScene(slicer.mrmlScene)
 
-        # Uses MorphoDepot logic so all related methods are together
-        self.logic = MorphoDepot.MorphoDepotLogic()
+        # Uses MorphoDepot logic and widget so all related methods are together
+        ghProgressMethod = lambda message : MorphoDepot.MorphoDepotWidget.ghProgressMethod(None, message)
+        self.logic = MorphoDepot.MorphoDepotLogic(ghProgressMethod)
 
         self.ui.prCollapsibleButton.enabled = False
 
@@ -100,7 +101,7 @@ class MorphoDepotReviewWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         prList = self.logic.prList(role="reviewer")
         for pr in prList:
             prStatus = 'draft' if pr['isDraft'] else 'ready for review'
-            prTitle = f"{pr['repository']}: {pr['title']} ({prStatus})"
+            prTitle = f"{pr['repository']['nameWithOwner']}: {pr['title']} ({prStatus})"
             item = qt.QListWidgetItem(prTitle)
             self.prsByItem[item] = pr
             self.ui.prList.addItem(item)

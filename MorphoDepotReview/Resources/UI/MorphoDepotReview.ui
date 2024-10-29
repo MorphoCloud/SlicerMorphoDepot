@@ -69,7 +69,7 @@
          <bool>true</bool>
         </property>
         <property name="toolTip">
-         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Saves your issue's segmentation to your local repository checkout and pushes the file to your fork on github.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+         <string>Notifies the segmenter that changes are needed</string>
         </property>
         <property name="text">
          <string>Request changes</string>
@@ -82,7 +82,7 @@
          <bool>true</bool>
         </property>
         <property name="toolTip">
-         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Notify the repository owner that your pull request addressing the issue is ready for review.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+         <string>Approves the pull request and merges to the main branch.  Closes the corresponding issue.</string>
         </property>
         <property name="text">
          <string>Approve pull request</string>

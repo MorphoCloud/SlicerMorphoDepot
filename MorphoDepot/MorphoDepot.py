@@ -345,6 +345,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         pluginHandlerSingleton.pluginByName("Default").switchToModule("SegmentEditor")
         editorWidget = slicer.modules.segmenteditor.widgetRepresentation().self()
 
+        self.segmentationPath = f"{localDirectory}/{branchName}.seg.nrrd"
         if branchName in segmentationNodesByName.keys():
             self.segmentationNode = segmentationNodesByName[branchName]
         else:
@@ -361,7 +362,6 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 segment.SetColor(color[:3])
                 segment.SetName(name)
                 self.segmentationNode.GetSegmentation().AddSegment(segment)
-            self.segmentationPath = f"{localDirectory}/{branchName}.seg.nrrd"
             slicer.util.saveNode(self.segmentationNode, self.segmentationPath)
 
         editorWidget.parameterSetNode.SetAndObserveSegmentationNode(self.segmentationNode)
@@ -452,7 +452,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             if pr['title'] == issueName:
                 prNumber = pr['number']
                 for reviewRequest in pr['reviewRequests']:
-                    if subRequest['login'] == upstreamOwner:
+                    if reviewRequests['login'] == upstreamOwner:
                         ownerIsReviewer = True
         if not ownerIsReviewer:
             self.gh(f"""

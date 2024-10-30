@@ -228,7 +228,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             logging.error("gh command failed:")
             logging.error(commandList)
             logging.error(result)
-        self.ghProgressMethod("gh command finished")
+        self.ghProgressMethod(f"gh command finished: {result}")
         return result[0]
 
     def morphoRepos(self):
@@ -451,9 +451,11 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         for pr in prs:
             if pr['title'] == issueName:
                 prNumber = pr['number']
+                logging.debug(f"Looking for {upstreamOwner} in {prNumber}")
                 for reviewRequest in pr['reviewRequests']:
                     if reviewRequests['login'] == upstreamOwner:
                         ownerIsReviewer = True
+        logging.debug(f"ownerIsReviewer: {ownerIsReviewer}")
         if not ownerIsReviewer:
             self.gh(f"""
                 pr edit {prNumber}

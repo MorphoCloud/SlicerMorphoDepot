@@ -403,7 +403,9 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         """
         if not self.segmentationNode:
             return False
-        slicer.util.saveNode(self.segmentationNode, self.segmentationPath)
+        if not slicer.util.saveNode(self.segmentationNode, self.segmentationPath):
+            logging.error(f"Segmentation save failed: path is {self.segmentationPath}")
+            return False
         self.localRepo.index.add([self.segmentationPath])
         self.localRepo.index.commit(message)
 

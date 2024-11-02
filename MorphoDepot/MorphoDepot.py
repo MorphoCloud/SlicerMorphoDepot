@@ -254,7 +254,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         prList = []
         for repo in repoList:
             if role == "reviewer":
-                if repo['owner'] != me:
+                if repo['owner']['login'] != me:
                     continue
             repoID = f"{repo['owner']['login']}/{repo['name']}"
             repoPRList = json.loads(self.gh(f"pr list --repo {repoID} --json {jsonFields} {searchString}"))

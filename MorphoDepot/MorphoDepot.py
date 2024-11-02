@@ -358,7 +358,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             self.segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(volumeNode)
             self.segmentationNode.SetName(branchName)
             # TODO: specify in the issue which segments in the color table should be included in issue segmentation
-            for colorIndex in range(colorNode.GetNumberOfColors()):
+            for colorIndex in range(1,colorNode.GetNumberOfColors()):
                 color = [0]*4
                 colorNode.GetColor(colorIndex, color)
                 name = colorNode.GetColorName(colorIndex)

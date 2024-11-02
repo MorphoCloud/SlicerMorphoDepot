@@ -439,33 +439,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         return True
 
     def requestReview(self):
-        pr = self.issuePR()
-        issueName = self.localRepo.active_branch.name
-        upstreamNameWithOwner = self.nameWithOwner("upstream")
-        upstreamOwner = upstreamNameWithOwner.split("/")[0]
-        originNameWithOwner = self.nameWithOwner("origin")
-        originOwner = originNameWithOwner.split("/")[0]
-        prs = json.loads(self.gh(f"""
-                pr list
-                    --repo {upstreamNameWithOwner}
-                    --json title,reviewRequests,number
-                """))
-        ownerIsReviewer = False
-        prNumber = ""
-        for pr in prs:
-            if pr['title'] == issueName:
-                prNumber = pr['number']
-                logging.debug(f"Looking for {upstreamOwner} in {prNumber}")
-                for reviewRequest in pr['reviewRequests']:
-                    if reviewRequests['login'] == upstreamOwner:
-                        ownerIsReviewer = True
-        logging.debug(f"ownerIsReviewer: {ownerIsReviewer}")
-        if not ownerIsReviewer:
-            self.gh(f"""
-                pr edit {prNumber}
-                    --repo {upstreamNameWithOwner}
-                    --add-reviewer {upstreamOwner}
-                """)
+        pr = self.issuePR(role="segmenter")
         self.gh(f"""
             pr ready {prNumber}
                 --repo {upstreamNameWithOwner}

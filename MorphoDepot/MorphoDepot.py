@@ -269,6 +269,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         return repositoryList
 
     def loadIssue(self, issue, repoDirectory):
+        self.ghProgressMethod(f"Loading issue {issue} into {repoDirectory}")
         issueNumber = issue['number']
         branchName=f"issue-{issueNumber}"
         sourceRepository = issue['repository']['nameWithOwner']
@@ -310,6 +311,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         branchName = pr['title']
         repositoryName = f"{pr['headRepositoryOwner']['login']}/{pr['headRepository']['name']}"
         localDirectory = f"{repoDirectory}/{pr['headRepository']['name']}-{branchName}"
+        self.ghProgressMethod(f"Loading issue {repositoryName} into {localDirectory}")
 
         if not os.path.exists(localDirectory):
             self.gh(f"repo clone {repositoryName} {localDirectory}")
@@ -326,6 +328,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         localDirectory = self.localRepo.working_dir
         branchName = self.localRepo.active_branch.name
         upstreamNameWithOwner = self.nameWithOwner("upstream")
+
+        self.ghProgressMethod(f"Loading {branchName} into {localDirectory}")
 
         # TODO: move from single volume and color table file to segmentation specification json
         colorPath = glob.glob(f"{localDirectory}/*.ctbl")[0]

@@ -248,10 +248,14 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         if role == "segmenter":
             searchString = "--author=@me"
         elif role == "reviewer":
-            searchString = "--search review-requested:@me"
+            me = self.gh("auth status").split("\n")[1].split()[-2] # TODO better way?
+            searchString = "--search draft:false"
         jsonFields = "title,number,isDraft,updatedAt,headRepositoryOwner,headRepository"
         prList = []
         for repo in repoList:
+            if role == "reviewer":
+                if repo['owner'] != me:
+                    continue
             repoID = f"{repo['owner']['login']}/{repo['name']}"
             repoPRList = json.loads(self.gh(f"pr list --repo {repoID} --json {jsonFields} {searchString}"))
             for repoPR in repoPRList:

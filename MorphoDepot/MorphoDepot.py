@@ -446,8 +446,9 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
     def requestReview(self):
         pr = self.issuePR(role="segmenter")
+        upstreamNameWithOwner = self.nameWithOwner("upstream")
         self.gh(f"""
-            pr ready {prNumber}
+            pr ready {pr['number']}
                 --repo {upstreamNameWithOwner}
             """)
 

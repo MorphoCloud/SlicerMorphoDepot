@@ -157,9 +157,12 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         if slicer.util.confirmOkCancelDisplay("Close scene and load issue?"):
             self.ui.currentIssueLabel.text = f"Issue: {item.text()}"
             slicer.mrmlScene.Clear()
-            self.logic.loadIssue(issue, repoDirectory)
-            self.ui.forkManagementCollapsibleButton.enabled = True
-            slicer.util.showStatusMessage(f"Start segmenting {item.text()}")
+            try:
+                self.logic.loadIssue(issue, repoDirectory)
+                self.ui.forkManagementCollapsibleButton.enabled = True
+                slicer.util.showStatusMessage(f"Start segmenting {item.text()}")
+            except git.exc.NoSuchPathError:
+                slicer.util.errorDisplay("Could not load issue.  If it was just created on github please wait a few seconds and try again")
 
     def onCommit(self):
         slicer.util.showStatusMessage(f"Commiting and pushing")

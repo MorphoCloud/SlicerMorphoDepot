@@ -95,7 +95,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         repoDir = slicer.util.settingsValue("MorphoDepot/repoDirectory", "")
         if repoDir == "":
-            repoDir = qt.QStandardPaths.writableLocation(qt.QStandardPaths.DocumentsLocation)
+            repoDir = slicer.util.settingsValue("DefaultScenePath", "")
         self.ui.repoDirectory.currentPath = repoDir
         self.onRepoDirectoryChanged()
 

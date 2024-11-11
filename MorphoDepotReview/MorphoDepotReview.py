@@ -109,8 +109,8 @@ class MorphoDepotReviewWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
 
     def onPRDoubleClicked(self, item):
         slicer.util.showStatusMessage(f"Loading {item.text()}")
-        repoDir = qt.QStandardPaths.writableLocation(qt.QStandardPaths.DocumentsLocation)
-        repoDirectory = slicer.util.settingsValue("MorphoDepot/repoDirectory", repoDir)
+        defaultRepoDir = slicer.util.settingsValue("DefaultScenePath", "")
+        repoDirectory = slicer.util.settingsValue("MorphoDepot/repoDirectory", defaultRepoDir)
         pr = self.prsByItem[item]
         if slicer.util.confirmOkCancelDisplay("Close scene and load PR?"):
             self.ui.currentPRLabel.text = f"PR: {item.text()}"

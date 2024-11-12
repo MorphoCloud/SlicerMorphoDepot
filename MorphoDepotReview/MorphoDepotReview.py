@@ -109,7 +109,7 @@ class MorphoDepotReviewWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
 
     def onPRDoubleClicked(self, item):
         slicer.util.showStatusMessage(f"Loading {item.text()}")
-        defaultRepoDir = slicer.util.settingsValue("DefaultScenePath", "")
+        defaultRepoDir = slicer.app.defaultScenePath
         repoDirectory = slicer.util.settingsValue("MorphoDepot/repoDirectory", defaultRepoDir)
         pr = self.prsByItem[item]
         if slicer.util.confirmOkCancelDisplay("Close scene and load PR?"):

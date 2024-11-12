@@ -95,7 +95,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         repoDir = slicer.util.settingsValue("MorphoDepot/repoDirectory", "")
         if repoDir == "":
-            repoDir = slicer.util.settingsValue("DefaultScenePath", "")
+            repoDir = slicer.app.defaultScenePath
         self.ui.repoDirectory.currentPath = repoDir
         self.onRepoDirectoryChanged()
 

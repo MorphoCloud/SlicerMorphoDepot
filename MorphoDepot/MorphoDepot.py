@@ -350,6 +350,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         for segmentationPath in glob.glob(f"{localDirectory}/*.seg.nrrd"):
             name = os.path.split(segmentationPath)[1].split(".")[0]
             segmentationNodesByName[name] = slicer.util.loadSegmentation(segmentationPath)
+            segmentationNodesByName[name].GetDisplayNode().SetVisibility(False)
 
         # Switch to Segment Editor module
         pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
@@ -359,6 +360,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.segmentationPath = f"{localDirectory}/{branchName}.seg.nrrd"
         if branchName in segmentationNodesByName.keys():
             self.segmentationNode = segmentationNodesByName[branchName]
+            self.segmentationNode.GetDisplayNode().SetVisibility(True)
         else:
             self.segmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
             self.segmentationNode.CreateDefaultDisplayNodes()

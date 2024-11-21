@@ -3,6 +3,7 @@ import glob
 import json
 import logging
 import os
+import platform
 from typing import Annotated, Optional
 
 import qt
@@ -92,12 +93,18 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # only allow picking directories (bitwise AND NOT file filter bit)
         self.ui.repoDirectory.filters = self.ui.repoDirectory.filters & ~self.ui.repoDirectory.Files
-
         repoDir = slicer.util.settingsValue("MorphoDepot/repoDirectory", "")
         if repoDir == "":
             repoDir = slicer.app.defaultScenePath
         self.ui.repoDirectory.currentPath = repoDir
         self.onRepoDirectoryChanged()
+
+        # set up the platform-dependent path to the gh command
+        ghPath = self.logic.ghPathSearch()
+        self.ui.ghPath.currentPath = ghPath
+        self.onGHPathChanged()
+        if ghPath == "":
+            slicer.util.errorDisplay("Could not find the gh command on your system.  Please see the documentation on how to install it for your platform.\n\nIf you have it installed, set the path in the MorphoDepot advanced settings.")
 
         self.ui.forkManagementCollapsibleButton.enabled = False
 
@@ -107,6 +114,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.reviewButton.clicked.connect(self.onRequestReview)
         self.ui.refreshButton.connect("clicked(bool)", self.onRefresh)
         self.ui.repoDirectory.connect("currentPathChanged(QString)", self.onRepoDirectoryChanged)
+        self.ui.ghPath.connect("currentPathChanged(QString)", self.onGHPathChanged)
 
     def cleanup(self) -> None:
         """Called when the application closes and the module widget is destroyed."""
@@ -191,6 +199,9 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
     def onRepoDirectoryChanged(self):
         qt.QSettings().setValue("MorphoDepot/repoDirectory", self.ui.repoDirectory.currentPath)
 
+    def onGHPathChanged(self):
+        qt.QSettings().setValue("MorphoDepot/ghPath", self.ui.ghPath.currentPath)
+
 
 #
 # MorphoDepotLogic
@@ -214,10 +225,60 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.segmentationPath = ""
         self.localRepo = None
         self.ghProgressMethod = ghProgressMethod if ghProgressMethod else lambda *args : None
+        self.ghPath = ""
+
+    def ghPathSearch(self):
+        """Determine the platform-specific path to gh if possible.
+        Will return an empty string if gh executable cannot be found.
+        """
+
+        # use the previously set value if available
+        self.ghPath = slicer.util.settingsValue("MorphoDepot/ghPath", "")
+        if self.ghPath != "":
+            return
+
+
+        # on windows, see if the gh comand is in the path variable and is able to run
+        if os.name == 'nt':
+            for p in os.environ['PATH'].split(';'):
+                # the default installer, as run by winget, puts it
+                # in c:/Program Files/GitHub CLI, but it could be somewhere else.
+                # For now assume it's in a directory with GitHub CLI in the path
+                if p.find("GitHub CLI") == -1:
+                    continue
+                try:
+                    testPath = p.replace("\\", "/")+r"gh.exe"
+                    slicer.util.launchConsoleProcess(testPath).communicate()
+                    self.ghPath = testPath
+                except:
+                    pass
+
+        # on mac or linux, check if it's in one of the stanard locations, or somewhere else
+        if os.name == 'posix':
+            if self.ghPath == "":
+                whichResult = slicer.util.launchConsoleProcess(["which", "gh"]).communicate()
+                self.ghPath = whichResult[0].strip() # will be empty string if not found
+            if self.ghPath == "":
+                homebrewDefaultPaths = {
+                    'Darwin': "/usr/local/bin",
+                    'Linux': "/home/linuxbrew/.linuxbrew/bin",
+                }
+                defaultHomebrewInstallPath = homebrewDefaultPaths[platform.system()]
+                try:
+                    testPath = defaultHomebrewInstallPath + "/gh"
+                    slicer.util.launchConsoleProcess(testPath).communicate()
+                    self.ghPath = testPath
+                except:
+                    pass
+
+        return self.ghPath
 
     def gh(self, command):
         """Execute `gh` command.  Multiline input string accepted for readablity.
         Do not include `gh` in the command string"""
+        if self.ghPath == "":
+            logging.error("Error, gh not found")
+            return "Error, gh not found"
         if command.__class__() == "":
             commandList = command.replace("\n", " ").split()
         elif command.__class__() == []:
@@ -225,7 +286,9 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         else:
             logging.error("command must be string or list")
         self.ghProgressMethod(" ".join(commandList))
-        process = slicer.util.launchConsoleProcess(["gh"] + commandList)
+        fullCommandList = [self.ghPath] + commandList
+        print(fullCommandList)
+        process = slicer.util.launchConsoleProcess(fullCommandList)
         result = process.communicate()
         if process.returncode != 0:
             logging.error("gh command failed:")

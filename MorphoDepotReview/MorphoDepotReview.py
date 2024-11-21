@@ -86,6 +86,11 @@ class MorphoDepotReviewWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         ghProgressMethod = lambda message : MorphoDepot.MorphoDepotWidget.ghProgressMethod(None, message)
         self.logic = MorphoDepot.MorphoDepotLogic(ghProgressMethod)
 
+        # set up the platform-dependent path to the gh command
+        ghPath = self.logic.ghPathSearch()
+        if ghPath == "":
+            slicer.util.errorDisplay("Could not find the gh command on your system.  Please see the documentation on how to install it for your platform.\n\nIf you have it installed, set the path in the MorphoDepot advanced settings.")
+
         self.ui.prCollapsibleButton.enabled = False
 
         # Connections

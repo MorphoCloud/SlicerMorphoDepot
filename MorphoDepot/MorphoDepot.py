@@ -93,11 +93,9 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # only allow picking directories (bitwise AND NOT file filter bit)
         self.ui.repoDirectory.filters = self.ui.repoDirectory.filters & ~self.ui.repoDirectory.Files
-        repoDir = slicer.util.settingsValue("MorphoDepot/repoDirectory", "")
-        if repoDir == "":
-            repoDir = slicer.app.defaultScenePath
+
+        repoDir = self.logic.localRepositoryDirectory()
         self.ui.repoDirectory.currentPath = repoDir
-        self.onRepoDirectoryChanged()
 
         # set up the platform-dependent path to the gh command
         ghPath = self.logic.ghPathSearch()
@@ -197,7 +195,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.updatePRList()
 
     def onRepoDirectoryChanged(self):
-        qt.QSettings().setValue("MorphoDepot/repoDirectory", self.ui.repoDirectory.currentPath)
+        self.logic.setLocalRepositoryDirectory(self.ui.repoDirectory.currentPath)
 
     def onGHPathChanged(self):
         qt.QSettings().setValue("MorphoDepot/ghPath", self.ui.ghPath.currentPath)
@@ -226,6 +224,17 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.localRepo = None
         self.ghProgressMethod = ghProgressMethod if ghProgressMethod else lambda *args : None
         self.ghPath = ""
+
+    def localRepositoryDirectory(self):
+        repoDirectory = slicer.util.settingsValue("MorphoDepot/repoDirectory", "")
+        if repoDirectory == "":
+            defaultRepoDir = os.path.join(slicer.app.defaultScenePath, "MorphoDepot")
+            self.setLocalRepositoryDirectory(defaultRepoDir)
+            repoDirectory = defaultRepoDir
+        return repoDirectory
+
+    def setLocalRepositoryDirectory(self, repoDir):
+        qt.QSettings().setValue("MorphoDepot/repoDirectory", repoDir)
 
     def ghPathSearch(self):
         """Determine the platform-specific path to gh if possible.

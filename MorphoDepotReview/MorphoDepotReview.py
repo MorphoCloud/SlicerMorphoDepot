@@ -106,7 +106,7 @@ class MorphoDepotReviewWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         prList = self.logic.prList(role="reviewer")
         for pr in prList:
             prStatus = 'draft' if pr['isDraft'] else 'ready for review'
-            prTitle = f"{pr['repository']['nameWithOwner']}: {pr['title']} ({prStatus})"
+            prTitle = f"{pr['issueTitle']} {pr['repository']['nameWithOwner']}: {pr['title']} ({prStatus})"
             item = qt.QListWidgetItem(prTitle)
             self.prsByItem[item] = pr
             self.ui.prList.addItem(item)

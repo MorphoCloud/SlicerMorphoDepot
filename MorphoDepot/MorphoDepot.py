@@ -137,7 +137,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.issuesByItem = {}
         issueList = self.logic.issueList()
         for issue in issueList:
-            issueTitle = f"{issue['repository']['nameWithOwner']}, #{issue['number']}: {issue['title']}"
+            issueTitle = f"{issue['title']} {issue['repository']['nameWithOwner']}, #{issue['number']}"
             item = qt.QListWidgetItem(issueTitle)
             self.issuesByItem[item] = issue
             self.ui.issueList.addItem(item)
@@ -150,7 +150,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         prList = self.logic.prList(role="segmenter")
         for pr in prList:
             prStatus = 'draft' if pr['isDraft'] else 'ready for review'
-            prTitle = f"{pr['repository']['nameWithOwner']}: {pr['title']} ({prStatus})"
+            prTitle = f"{pr['issueTitle']} {pr['repository']['nameWithOwner']}: {pr['title']} ({prStatus})"
             item = qt.QListWidgetItem(prTitle)
             self.prsByItem[item] = pr
             self.ui.prList.addItem(item)
@@ -243,9 +243,10 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
         # use the previously set value if available
         self.ghPath = slicer.util.settingsValue("MorphoDepot/ghPath", "")
+        if self.ghPath == "None":
+            self.ghPath = ""
         if self.ghPath != "":
             return
-
 
         # on windows, see if the gh comand is in the path variable and is able to run
         if os.name == 'nt':
@@ -296,7 +297,6 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             logging.error("command must be string or list")
         self.ghProgressMethod(" ".join(commandList))
         fullCommandList = [self.ghPath] + commandList
-        print(fullCommandList)
         process = slicer.util.launchConsoleProcess(fullCommandList)
         result = process.communicate()
         if process.returncode != 0:
@@ -335,6 +335,11 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             repoPRList = json.loads(self.gh(f"pr list --repo {repoID} --json {jsonFields} {searchString}"))
             for repoPR in repoPRList:
                 repoPR['repository'] = {'nameWithOwner': repoID}
+                issueNumber = repoPR['title'].split("-")[1]
+                issueList = json.loads(self.gh(f"issue list --repo {repoID} --json number,title"))
+                for issue in issueList:
+                    if str(issue['number']) == issueNumber:
+                        repoPR['issueTitle'] = issue['title']
             prList += repoPRList
         return prList
 

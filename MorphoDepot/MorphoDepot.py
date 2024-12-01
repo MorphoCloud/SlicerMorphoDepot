@@ -246,7 +246,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         if self.ghPath == "None":
             self.ghPath = ""
         if self.ghPath != "":
-            return
+            return self.ghPath
 
         # on windows, see if the gh comand is in the path variable and is able to run
         if os.name == 'nt':

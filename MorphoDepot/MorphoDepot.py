@@ -323,7 +323,11 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         if role == "segmenter":
             searchString = "--author=@me"
         elif role == "reviewer":
-            me = self.gh("auth status").split("\n")[1].split()[-2] # TODO better way?
+            # if you are are reviewer, you must have one repo but check anyway
+            myRepoList = json.loads(self.gh(f"repo list --json owner --limit 1"))
+            if len(myRepoList) == 0:
+                return []
+            me = myRepoList[0]['owner']['login']
             searchString = "--search draft:false"
         jsonFields = "title,number,isDraft,updatedAt,headRepositoryOwner,headRepository"
         prList = []

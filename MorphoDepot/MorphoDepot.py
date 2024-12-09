@@ -341,6 +341,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 repoPR['repository'] = {'nameWithOwner': repoID}
                 issueNumber = repoPR['title'].split("-")[1]
                 issueList = json.loads(self.gh(f"issue list --repo {repoID} --json number,title"))
+                repoPR['issueTitle'] = "Issue not found"
                 for issue in issueList:
                     if str(issue['number']) == issueNumber:
                         repoPR['issueTitle'] = issue['title']
@@ -403,9 +404,14 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.localRepo.remotes.origin.fetch()
         self.localRepo.git.checkout(branchName)
         self.localRepo.remotes.origin.pull()
+        try:
+            self.localRepo.remotes.origin.pull()
+        except git.exc.GitCommandError:
+            self.ghProgressMethod(f"Error pulling origin")
+            return False
 
         self.loadFromLocalRepository()
-
+        return True
 
     def loadFromLocalRepository(self):
 

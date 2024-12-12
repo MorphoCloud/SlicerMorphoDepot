@@ -1,3 +1,6 @@
+
+![SlicerMorphoDepotIcon](https://github.com/user-attachments/assets/10368b59-d24c-402b-9da6-4e700ade1061)
+
 # SlicerMorphoDepot
 Experiments and implementations related to the SlicerMorph MorphoDepot project.
 

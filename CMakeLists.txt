@@ -8,8 +8,8 @@ set(EXTENSION_HOMEPAGE "https://www.slicer.org/wiki/Documentation/Nightly/Extens
 set(EXTENSION_CATEGORY "SlicerMorph")
 set(EXTENSION_CONTRIBUTORS "Steve Pieper (Isomics, Inc.)")
 set(EXTENSION_DESCRIPTION "Code to support collaborative segmentation projects using github.")
-set(EXTENSION_ICONURL "https://www.example.com/Slicer/Extensions/MorphoDepot.png")
-set(EXTENSION_SCREENSHOTURLS "https://www.example.com/Slicer/Extensions/MorphoDepot/Screenshots/1.png")
+set(EXTENSION_ICONURL "https://github.com/user-attachments/assets/10368b59-d24c-402b-9da6-4e700ade1061")
+set(EXTENSION_SCREENSHOTURLS "https://github.com/user-attachments/assets/2d81e4f3-8d8b-49e4-97f4-f906053d375f https://github.com/user-attachments/assets/9481ce0f-dc37-4900-9cdc-14bb0922df59")
 set(EXTENSION_DEPENDS "NA") # Specified as a list or "NA" if no dependencies
 
 #-----------------------------------------------------------------------------

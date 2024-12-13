@@ -1,19 +1,28 @@
+cmake_minimum_required(VERSION 3.16.3...3.19.7 FATAL_ERROR)
 
-![SlicerMorphoDepotIcon](https://github.com/user-attachments/assets/10368b59-d24c-402b-9da6-4e700ade1061)
+project(MorphoDepot)
 
-# SlicerMorphoDepot
-Experiments and implementations related to the SlicerMorph MorphoDepot project.
+#-----------------------------------------------------------------------------
+# Extension meta-information
+set(EXTENSION_HOMEPAGE "https://www.slicer.org/wiki/Documentation/Nightly/Extensions/MorphoDepot")
+set(EXTENSION_CATEGORY "SlicerMorph")
+set(EXTENSION_CONTRIBUTORS "Steve Pieper (Isomics, Inc.)")
+set(EXTENSION_DESCRIPTION "Code to support collaborative segmentation projects using github.")
+set(EXTENSION_ICONURL "https://github.com/user-attachments/assets/10368b59-d24c-402b-9da6-4e700ade1061")
+set(EXTENSION_SCREENSHOTURLS "https://github.com/user-attachments/assets/2d81e4f3-8d8b-49e4-97f4-f906053d375f https://github.com/user-attachments/assets/9481ce0f-dc37-4900-9cdc-14bb0922df59")
+set(EXTENSION_DEPENDS "NA") # Specified as a list or "NA" if no dependencies
 
-The goal is to use github infrastructure to manage multi-person segmentation projects.  A repository is used to manage segmentation of a specimen (e.g. a microCT of a fish) and issues are assigned to people to work on parts of the segmentation.  Pull requests are used to manage review and integration of segmentation tasks.
+#-----------------------------------------------------------------------------
+# Extension dependencies
+find_package(Slicer REQUIRED)
+include(${Slicer_USE_FILE})
 
-The Slicer extension uses git behind the scenes, but most of the project management is done from within Slicer.
+#-----------------------------------------------------------------------------
+# Extension modules
+add_subdirectory(MorphoDepot)
+add_subdirectory(MorphoDepotReview)
+## NEXT_MODULE
 
-See [documentation here](https://github.com/pieper/MorphoDepotdocs)
-
-MorphoDepot module lists pending issues assigned to this user and allows you to load/segment/commit them and then request review.
-
-![image](https://github.com/user-attachments/assets/2d81e4f3-8d8b-49e4-97f4-f906053d375f)
-
-MorphoDepotReview module lists pending pull requests and allows PI to accept edits or request changes.
-
-![image](https://github.com/user-attachments/assets/9481ce0f-dc37-4900-9cdc-14bb0922df59)
+#-----------------------------------------------------------------------------
+include(${Slicer_EXTENSION_GENERATE_CONFIG})
+include(${Slicer_EXTENSION_CPACK})

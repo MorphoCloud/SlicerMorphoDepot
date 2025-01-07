@@ -1,5 +1,5 @@
+![SlicerMorphoDepotIcon](https://github.com/user-attachments/assets/e1bc35d5-af0e-43aa-a224-417e13e6d78d)
 
-![SlicerMorphoDepotIcon](https://github.com/user-attachments/assets/10368b59-d24c-402b-9da6-4e700ade1061)
 
 # SlicerMorphoDepot
 Experiments and implementations related to the SlicerMorph MorphoDepot project.

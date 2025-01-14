@@ -8,12 +8,18 @@ The goal is to use github infrastructure to manage multi-person segmentation pro
 
 The Slicer extension uses git behind the scenes, but most of the project management is done from within Slicer.
 
-See [documentation here](https://github.com/pieper/MorphoDepotdocs)
+See [documentation here](https://github.com/MorphoCloud/MorphoDepotDocs)
 
-MorphoDepot module lists pending issues assigned to this user and allows you to load/segment/commit them and then request review.
+**MorphoDepot** module lists pending issues assigned to this user and allows you to load/segment/commit them and then request review.
 
 ![image](https://github.com/user-attachments/assets/2d81e4f3-8d8b-49e4-97f4-f906053d375f)
 
-MorphoDepotReview module lists pending pull requests and allows PI to accept edits or request changes.
+**MorphoDepotReview** module lists pending pull requests and allows PI to accept edits or request changes.
+
+**MorphoDepotAccession (TBD)** module will allow generating github repositories that can be accessed via MorphoDepot module. 
 
 ![image](https://github.com/user-attachments/assets/9481ce0f-dc37-4900-9cdc-14bb0922df59)
+
+# Funding 
+
+MorphoDepot module is supported by funding from National Science Foundation (DBI/2301405). 

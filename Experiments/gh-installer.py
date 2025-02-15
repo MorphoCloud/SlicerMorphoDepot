@@ -1,3 +1,4 @@
+import os
 import sys
 
 ghDownloadURLs = {
@@ -12,10 +13,14 @@ fileName = url.split("/")[-1]
 modulePath = "/".join(slicer.modules.morphodepot.path.split("/")[:-1])
 resourcesPath = modulePath + "/Resources"
 downloadPath = resourcesPath + "/" + fileName
-archiveName = fileName[:-len('.tar.gz')]
+if fileName.endswith(".tar.gz"):
+    archiveDirName = fileName[:-len('.tar.gz')]
+elif fileName.endswith(".zip"):
+    archiveDirName = fileName[:-len('.zip')]
+else:
+    print("bad archive extension")
 
 slicer.util.downloadFile(url, downloadPath)
-
 
 if sys.platform == "linux2":
     fileName = url.split("/")[-1]
@@ -24,8 +29,21 @@ if sys.platform == "linux2":
     if bashProcess.wait() != 0:
         print("Could not open archive")
         print(bashProcess.communicate())
-    ghPath = f"{resourcesPath}/{archiveName}/bin/gh"
+    ghPath = f"{resourcesPath}/{archiveDirName}/bin/gh"
+elif sys.platform == "darwin":
+    unzipPath = resourcesPath + "/" + archiveDirName
+    archive = slicer.vtkArchive()
+    archive.UnZip(downloadPath, resourcesPath)
+    ghPath = f"{unzipPath}/bin/gh"
+elif sys.platform == "darwin" or sys.platform == "win32":
+    unzipPath = resourcesPath + "/" + archiveDirName
+    os.makedirs(unzipPath, exist_ok=True)
+    archive = slicer.vtkArchive()
+    archive.UnZip(downloadPath, unzipPath)
+    ghPath = f"{unzipPath}/bin/gh.exe"
+else:
+    print(f"unknown platform {sys.platform}")
 
-    print(slicer.util.launchConsoleProcess(ghPath).communicate())
-    
+print(slicer.util.launchConsoleProcess(ghPath).communicate())
 
+os.remove(downloadPath)

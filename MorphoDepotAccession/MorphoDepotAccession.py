@@ -198,7 +198,7 @@ class MorphoDepotAccessionForm():
         self.question3_2 = FormRadioQuestion("What is your specimen's sex?", ["Male", "Female", "Unknown"], self.validateForm)
         layout.addWidget(self.question3_2.questionBox)
         self.question3_3 = FormRadioQuestion("What is your specimen's developmental stage?", ["Prenatal (fetus, embryo)", "Juvenile (neonatal to subadult)", "Adult"], self.validateForm)
-        layout.addWidget(self.question3_3.qButtonuestionBox)
+        layout.addWidget(self.question3_3.questionBox)
 
         # section 4
         layout = self.sectionWidgets[4].layout()

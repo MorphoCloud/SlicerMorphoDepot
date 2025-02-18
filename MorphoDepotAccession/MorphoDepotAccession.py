@@ -241,9 +241,11 @@ class MorphoDepotAccessionForm():
             self.sectionWidgets[2].show()
             if self.question2_1.answer() == "Yes":
                 self.question2_2.questionBox.show()
+                self.gotoiDigBioButton.show()
                 self.sectionWidgets[3].hide()
             else:
                 self.question2_2.questionBox.hide()
+                self.gotoiDigBioButton.hide()
                 self.sectionWidgets[3].show()
         if self.question4_3.answer() == "Partial specimen":
             self.sectionWidgets[5].show()

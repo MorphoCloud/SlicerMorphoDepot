@@ -190,7 +190,8 @@ class MorphoDepotAccessionForm():
 
         # section 3
         layout = self.sectionWidgets[3].layout()
-        self.question3_1 = FormTextQuestion("What is your specimen's species?", self.validateForm)
+        self.question3_1 = FormSpeciesQuestion("What is your specimen's species?", self.validateForm)
+        self.question3_1.questionBox.toolTip = "Enter a valid genus and species for your specimen and use the 'Check species' button to confirm.  If unsure, use the GBIF web page to search"
         layout.addWidget(self.question3_1.questionBox)
         self.gotoGBIFButton = qt.QPushButton("Open GBIF")
         self.gotoGBIFButton.connect("clicked()", lambda : qt.QDesktopServices.openUrl(qt.QUrl("https://gbif.org")))
@@ -301,7 +302,7 @@ class MorphoDepotAccessionForm():
         return data
 
 
-class BaseQuestion():
+class FormBaseQuestion():
     def __init__(self, question):
         self.questionBox = qt.QWidget()
         self.questionLayout = qt.QVBoxLayout()
@@ -314,7 +315,7 @@ class BaseQuestion():
     def heightForString(self, s):
         return max(len(s) // 2.5, 30)
 
-class FormRadioQuestion(BaseQuestion):
+class FormRadioQuestion(FormBaseQuestion):
     def __init__(self, question, options, validator):
         super().__init__(question)
         self.optionButtons = {}
@@ -330,7 +331,7 @@ class FormRadioQuestion(BaseQuestion):
         return ""
 
 
-class FormCheckBoxesQuestion(BaseQuestion):
+class FormCheckBoxesQuestion(FormBaseQuestion):
     def __init__(self, question, options, validator):
         super().__init__(question)
         self.optionButtons = {}
@@ -346,7 +347,7 @@ class FormCheckBoxesQuestion(BaseQuestion):
                 answers.append(option)
         return answers
 
-class FormTextQuestion(BaseQuestion):
+class FormTextQuestion(FormBaseQuestion):
     def __init__(self, question, validator):
         super().__init__(question)
         self.answerText = qt.QLineEdit()
@@ -356,6 +357,28 @@ class FormTextQuestion(BaseQuestion):
     def answer(self):
         return self.answerText.text
 
+class FormSpeciesQuestion(FormTextQuestion):
+    def __init__(self, question, validator):
+        super().__init__(question, validator)
+        self.checkSpecies = qt.QPushButton("Check species")
+        self.checkSpecies.connect("clicked()", self.onCheckSpecies)
+        self.questionLayout.addWidget(self.checkSpecies)
+        self.speciesInfo = qt.QLabel()
+        self.questionLayout.addWidget(self.speciesInfo)
+
+    def onCheckSpecies(self):
+        import pygbif
+        result = pygbif.species.name_backbone(self.answerText.text)
+        if result['matchType'] == "NONE":
+            labelText = "No match"
+        elif result['rank'] != "SPECIES":
+            labelText = f"Not a species ({self.answerText.text} is rank {result['rank']})"
+        else:
+            labelText = f"Kingdom: {result['kingdom']}, Phylum: {result['phylum']}, Class: {result['class']},\nOrder: {result['order']}, Family: {result['family']}, Genus: {result['genus']}, Species: {result['species']}"
+        self.speciesInfo.text = labelText
+
+    def answer(self):
+        return self.answerText.text
 
 #
 # MorphoDepotAccessionLogic

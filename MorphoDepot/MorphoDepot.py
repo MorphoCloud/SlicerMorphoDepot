@@ -426,7 +426,9 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         colorNode = slicer.util.loadColorTable(colorPath)
 
         # TODO: move from single volume file to segmentation specification json
-        volumePath = f"{self.localRepo.working_dir}/master_volume"
+        volumePath = f"{self.localRepo.working_dir}/source_volume"
+        if not os.path.exists(volumePath):
+            volumePath = f"{self.localRepo.working_dir}/master_volume" # for backwards compatibility
         volumeURL = open(volumePath).read().strip()
         nrrdPath = f"{slicer.app.temporaryPath}/{upstreamNameWithOwner.replace('/', '-')}-volume.nrrd"
         slicer.util.downloadFile(volumeURL, nrrdPath)

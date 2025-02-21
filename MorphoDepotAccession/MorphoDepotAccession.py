@@ -90,8 +90,8 @@ class MorphoDepotAccessionWidget(ScriptedLoadableModuleWidget):
         self.ui.accessionCollapsibleButton.setLayout(self.accessionLayout)
 
         self.ui.createRepository.enabled = False
-        self.form = MorphoDepotAccessionForm(validationCallback = lambda valid, w=self.ui.createRepository: w.setEnabled(valid))
-        self.accessionLayout.addWidget(self.form.topWidget)
+        self.accessionForm = MorphoDepotAccessionForm(validationCallback = lambda valid, w=self.ui.createRepository: w.setEnabled(valid))
+        self.accessionLayout.addWidget(self.accessionForm.topWidget)
 
         # Connections
         self.ui.createRepository.clicked.connect(self.onCreateRepository)
@@ -100,16 +100,18 @@ class MorphoDepotAccessionWidget(ScriptedLoadableModuleWidget):
 
     def onCreateRepository(self):
         slicer.util.showStatusMessage(f"Creating...")
-        accessionData = self.form.accessionData()
-        print(accessionData)
+        accessionData = self.accessionForm.accessionData()
         with slicer.util.tryWithErrorDisplay(_("Trouble creating repository"), waitCursor=True):
-            self.logic.createRepository(accessionData)
+            sourceVolume = self.ui.inputSelector.currentNode()
+            colorTable = self.colorSelector.currentNode()
+            self.logic.createAccessionRepo(sourceVolume, colorTable, accessionData)
+        self.ui.createRepository.enabled = False
         self.ui.openRepository.enabled = True
 
     def onOpenRepository(self):
-        nameWithOwner = self.logic.nameWithOwner()
+        nameWithOwner = self.logic.nameWithOwner("origin")
         repoURL = qt.QUrl(f"https://github.com/{nameWithOwner}")
-        qt.QDesktopServices.OpenUrl(repoURL)
+        qt.QDesktopServices.openUrl(repoURL)
 
     def onClearForm(self):
         slicer.util.reloadScriptedModule(self.moduleName)
@@ -299,19 +301,19 @@ class MorphoDepotAccessionForm():
 
     def accessionData(self):
         data = {}
-        data["1_1"] = (self.question1_1.questionText.document.toPlainText(), self.question1_1.answer)
-        data["2_1"] = (self.question2_1.questionText.document.toPlainText(), self.question2_1.answer)
-        data["2_2"] = (self.question2_2.questionText.document.toPlainText(), self.question2_2.answer)
-        data["3_1"] = (self.question3_1.questionText.document.toPlainText(), self.question3_1.answer)
-        data["3_2"] = (self.question3_2.questionText.document.toPlainText(), self.question3_2.answer)
-        data["3_3"] = (self.question3_3.questionText.document.toPlainText(), self.question3_3.answer)
-        data["4_1"] = (self.question4_1.questionText.document.toPlainText(), self.question4_1.answer)
-        data["4_2"] = (self.question4_2.questionText.document.toPlainText(), self.question4_2.answer)
-        data["4_3"] = (self.question4_3.questionText.document.toPlainText(), self.question4_3.answer)
-        data["5_1"] = (self.question5_1.questionText.document.toPlainText(), self.question5_1.answer)
-        data["6_1"] = (self.question6_1.questionText.document.toPlainText(), self.question6_1.answer)
-        data["6_2"] = (self.question6_2.questionText.document.toPlainText(), self.question6_2.answer)
-        data["7_1"] = (self.question7_1.questionText.document.toPlainText(), self.question7_1.answer)
+        data["1_1"] = (self.question1_1.questionText.document.toPlainText(), self.question1_1.answer())
+        data["2_1"] = (self.question2_1.questionText.document.toPlainText(), self.question2_1.answer())
+        data["2_2"] = (self.question2_2.questionText.document.toPlainText(), self.question2_2.answer())
+        data["3_1"] = (self.question3_1.questionText.document.toPlainText(), self.question3_1.answer())
+        data["3_2"] = (self.question3_2.questionText.document.toPlainText(), self.question3_2.answer())
+        data["3_3"] = (self.question3_3.questionText.document.toPlainText(), self.question3_3.answer())
+        data["4_1"] = (self.question4_1.questionText.document.toPlainText(), self.question4_1.answer())
+        data["4_2"] = (self.question4_2.questionText.document.toPlainText(), self.question4_2.answer())
+        data["4_3"] = (self.question4_3.questionText.document.toPlainText(), self.question4_3.answer())
+        data["5_1"] = (self.question5_1.questionText.document.toPlainText(), self.question5_1.answer())
+        data["6_1"] = (self.question6_1.questionText.document.toPlainText(), self.question6_1.answer())
+        data["6_2"] = (self.question6_2.questionText.document.toPlainText(), self.question6_2.answer())
+        data["7_1"] = (self.question7_1.questionText.document.toPlainText(), self.question7_1.answer())
         return data
 
 

@@ -1,24 +1,9 @@
-import git
-import glob
-import json
-import logging
-import os
-from typing import Annotated, Optional
-
 import qt
-import vtk
 
 import slicer
 from slicer.i18n import tr as _
 from slicer.i18n import translate
 from slicer.ScriptedLoadableModule import *
-from slicer.util import VTKObservationMixin
-from slicer.parameterNodeWrapper import (
-    parameterNodeWrapper,
-    WithinRange,
-)
-
-from slicer import vtkMRMLScalarVolumeNode
 
 import MorphoDepot
 
@@ -52,7 +37,7 @@ and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR0132
 # MorphoDepotAccessionWidget
 #
 
-class MorphoDepotAccessionWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
+class MorphoDepotAccessionWidget(ScriptedLoadableModuleWidget):
     """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
@@ -60,13 +45,16 @@ class MorphoDepotAccessionWidget(ScriptedLoadableModuleWidget, VTKObservationMix
     def __init__(self, parent=None) -> None:
         """Called when the user opens the module the first time and the widget is initialized."""
         ScriptedLoadableModuleWidget.__init__(self, parent)
-        VTKObservationMixin.__init__(self)  # needed for parameter node observation
         self.logic = None
-        self.prsByItem = {}
 
     def setup(self) -> None:
         """Called when the user opens the module the first time and the widget is initialized."""
         ScriptedLoadableModuleWidget.setup(self)
+
+        # Uses MorphoDepot logic and widget so all related methods are together
+        ghProgressMethod = lambda message : MorphoDepot.MorphoDepotWidget.ghProgressMethod(None, message)
+        self.logic = MorphoDepot.MorphoDepotLogic(ghProgressMethod)
+        self.logic.ghPathSearch()
 
         try:
             import pygbif
@@ -75,39 +63,56 @@ class MorphoDepotAccessionWidget(ScriptedLoadableModuleWidget, VTKObservationMix
             slicer.util.pip_install("pygbif")
             import pygbif
 
+        try:
+            import idigbio
+        except ModuleNotFoundError:
+            slicer.util.showStatusMessage("Installing idigbio package...")
+            slicer.util.pip_install("idigbio")
+            import idigbio
+
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
         uiWidget = slicer.util.loadUI(self.resourcePath("UI/MorphoDepotAccession.ui"))
         self.layout.addWidget(uiWidget)
         self.ui = slicer.util.childWidgetVariables(uiWidget)
 
+        self.colorSelector = slicer.qMRMLColorTableComboBox()
+        self.colorSelector.setMRMLScene(slicer.mrmlScene)
+        self.ui.inputsCollapsibleButton.layout().addRow("Color table:", self.colorSelector)
+
         # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
         # "mrmlSceneChanged(vtkMRMLScene*)" signal in is connected to each MRML widget's.
         # "setMRMLScene(vtkMRMLScene*)" slot.
         uiWidget.setMRMLScene(slicer.mrmlScene)
 
-        # Uses MorphoDepot logic and widget so all related methods are together
-        ghProgressMethod = lambda message : MorphoDepot.MorphoDepotWidget.ghProgressMethod(None, message)
-        self.logic = MorphoDepot.MorphoDepotLogic(ghProgressMethod)
-
-        self.ui.createRepository.enabled = False
-
         # set up WebWidget with schemaform
         self.accessionLayout = qt.QVBoxLayout()
         self.ui.accessionCollapsibleButton.setLayout(self.accessionLayout)
 
+        self.ui.createRepository.enabled = False
         self.form = MorphoDepotAccessionForm(validationCallback = lambda valid, w=self.ui.createRepository: w.setEnabled(valid))
-        slicer.modules.form = self.form
         self.accessionLayout.addWidget(self.form.topWidget)
-        self.form.showSection(1)
 
         # Connections
         self.ui.createRepository.clicked.connect(self.onCreateRepository)
+        self.ui.openRepository.clicked.connect(self.onOpenRepository)
+        self.ui.clearForm.clicked.connect(self.onClearForm)
 
     def onCreateRepository(self):
         slicer.util.showStatusMessage(f"Creating...")
-        accessionData = self.form.jsonData()
+        accessionData = self.form.accessionData()
         print(accessionData)
+        with slicer.util.tryWithErrorDisplay(_("Trouble creating repository"), waitCursor=True):
+            self.logic.createRepository(accessionData)
+        self.ui.openRepository.enabled = True
+
+    def onOpenRepository(self):
+        nameWithOwner = self.logic.nameWithOwner()
+        repoURL = qt.QUrl(f"https://github.com/{nameWithOwner}")
+        qt.QDesktopServices.OpenUrl(repoURL)
+
+    def onClearForm(self):
+        slicer.util.reloadScriptedModule(self.moduleName)
 
 
 class MorphoDepotAccessionForm():
@@ -203,7 +208,7 @@ class MorphoDepotAccessionForm():
 
         # section 4
         layout = self.sectionWidgets[4].layout()
-        self.question4_1 = FormRadioQuestion("What is the modality of the acquisition?", ["Micro CT (or synchrotron)", "Medical CT", "MRI", "Lightsheet microscopy", "3D confocal microscopy", "Surface model (photogrammetry, structured light, or laser scanning"], self.validateForm)
+        self.question4_1 = FormRadioQuestion("What is the modality of the acquisition?", ["Micro CT (or synchrotron)", "Medical CT", "MRI", "Lightsheet microscopy", "3D confocal microscopy", "Surface model (photogrammetry, structured light, or laser scanning)"], self.validateForm)
         layout.addWidget(self.question4_1.questionBox)
         self.question4_2 = FormRadioQuestion("Is there contrast enhancement treatment applied to the specimen (iodine, phosphotungstenic acid, gadolinium, casting agents, etc)?", ["Yes", "No"], self.validateForm)
         layout.addWidget(self.question4_2.questionBox)
@@ -220,12 +225,17 @@ class MorphoDepotAccessionForm():
         self.question6_1 = FormCheckBoxesQuestion("Acknowledgement:", ["I have the right to allow redistribution of this data."], self.validateForm)
         layout.addWidget(self.question6_1.questionBox)
         self.question6_2 = FormRadioQuestion("Choose a license:", ["CC BY 4.0 (requires attribution, allows commercial usage)", "CC BY-NC 4.0 (requires attribution, non-commercial usage only)"], self.validateForm)
+        self.question6_2.optionButtons["CC BY 4.0 (requires attribution, allows commercial usage)"].checked=True
         layout.addWidget(self.question6_2.questionBox)
 
         # section 7
         layout = self.sectionWidgets[7].layout()
         self.question7_1 = FormTextQuestion("What should the repository in your github account called? This needs to be unique value for your account.", self.validateForm)
+        self.question7_1.questionBox.toolTip = "Name should be fairly short and contain only letters, numbers, and the dash, underscore, or dot characters."
         layout.addWidget(self.question7_1.questionBox)
+
+        if self.workflowMode:
+            self.showSection(1)
 
     def showSection(self, section):
         if self.workflowMode:
@@ -234,6 +244,8 @@ class MorphoDepotAccessionForm():
             self.sectionWidgets[section].show()
 
     def validateForm(self, arguments=None):
+        import re
+
         # first, update the visibility of dependent sections
         if self.question1_1.answer() == "Commercially acquired":
             self.sectionWidgets[2].hide()
@@ -281,24 +293,25 @@ class MorphoDepotAccessionForm():
         valid = valid and self.question6_1.answer() != ""
         valid = valid and self.question6_2.answer() != ""
         valid = valid and self.question7_1.answer() != ""
-
+        repoNameRegex = r"^[a-zA-Z][a-zA-Z0-9-_.]*$"
+        valid = valid and (re.match(repoNameRegex, self.question7_1.answer()) != None)
         self.validationCallback(valid)
 
-    def data(self):
+    def accessionData(self):
         data = {}
-        data[self.question1_1.questionText.document.toPlainText()] = self.question1_1.answer()
-        data[self.question2_1.questionText.document.toPlainText()] = self.question2_1.answer()
-        data[self.question2_2.questionText.document.toPlainText()] = self.question2_2.answer()
-        data[self.question3_1.questionText.document.toPlainText()] = self.question3_1.answer()
-        data[self.question3_2.questionText.document.toPlainText()] = self.question3_2.answer()
-        data[self.question3_3.questionText.document.toPlainText()] = self.question3_3.answer()
-        data[self.question4_1.questionText.document.toPlainText()] = self.question4_1.answer()
-        data[self.question4_2.questionText.document.toPlainText()] = self.question4_2.answer()
-        data[self.question4_3.questionText.document.toPlainText()] = self.question4_3.answer()
-        data[self.question5_1.questionText.document.toPlainText()] = self.question5_1.answer()
-        data[self.question6_1.questionText.document.toPlainText()] = self.question6_1.answer()
-        data[self.question6_2.questionText.document.toPlainText()] = self.question6_2.answer()
-        data[self.question7_1.questionText.document.toPlainText()] = self.question7_1.answer()
+        data["1_1"] = (self.question1_1.questionText.document.toPlainText(), self.question1_1.answer)
+        data["2_1"] = (self.question2_1.questionText.document.toPlainText(), self.question2_1.answer)
+        data["2_2"] = (self.question2_2.questionText.document.toPlainText(), self.question2_2.answer)
+        data["3_1"] = (self.question3_1.questionText.document.toPlainText(), self.question3_1.answer)
+        data["3_2"] = (self.question3_2.questionText.document.toPlainText(), self.question3_2.answer)
+        data["3_3"] = (self.question3_3.questionText.document.toPlainText(), self.question3_3.answer)
+        data["4_1"] = (self.question4_1.questionText.document.toPlainText(), self.question4_1.answer)
+        data["4_2"] = (self.question4_2.questionText.document.toPlainText(), self.question4_2.answer)
+        data["4_3"] = (self.question4_3.questionText.document.toPlainText(), self.question4_3.answer)
+        data["5_1"] = (self.question5_1.questionText.document.toPlainText(), self.question5_1.answer)
+        data["6_1"] = (self.question6_1.questionText.document.toPlainText(), self.question6_1.answer)
+        data["6_2"] = (self.question6_2.questionText.document.toPlainText(), self.question6_2.answer)
+        data["7_1"] = (self.question7_1.questionText.document.toPlainText(), self.question7_1.answer)
         return data
 
 

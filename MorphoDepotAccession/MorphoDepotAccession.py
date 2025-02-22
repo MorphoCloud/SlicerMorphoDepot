@@ -90,7 +90,8 @@ class MorphoDepotAccessionWidget(ScriptedLoadableModuleWidget):
         self.ui.accessionCollapsibleButton.setLayout(self.accessionLayout)
 
         self.ui.createRepository.enabled = False
-        self.accessionForm = MorphoDepotAccessionForm(validationCallback = lambda valid, w=self.ui.createRepository: w.setEnabled(valid))
+        validationCallback = lambda valid, w=self.ui.createRepository: w.setEnabled(valid)
+        self.accessionForm = MorphoDepotAccessionForm(validationCallback=validationCallback)
         self.accessionLayout.addWidget(self.accessionForm.topWidget)
 
         # Connections
@@ -99,6 +100,9 @@ class MorphoDepotAccessionWidget(ScriptedLoadableModuleWidget):
         self.ui.clearForm.clicked.connect(self.onClearForm)
 
     def onCreateRepository(self):
+        if self.ui.inputSelector.currentNode() == None or self.colorSelector.currentNode() == None:
+            slicer.util.errorDisplay("Need to select volume and color table")
+            return
         slicer.util.showStatusMessage(f"Creating...")
         accessionData = self.accessionForm.accessionData()
         with slicer.util.tryWithErrorDisplay(_("Trouble creating repository"), waitCursor=True):
@@ -269,6 +273,7 @@ class MorphoDepotAccessionForm():
 
         # then check if required elements have been filled out
         valid = True
+
         section3Required = False
         if self.question1_1.answer() == "":
             valid = False
@@ -279,12 +284,13 @@ class MorphoDepotAccessionForm():
                 section3Required = True
             elif self.question2_1.answer() == "Yes":
                 section3Required = False
-                if self.question2_2.answer() == "":
+                if not self.question2_2.answer().startswith("https://portal.idigbio.org/portal/records"):
                     valid = False
         else:
             valid = False
         if section3Required:
             valid = valid and self.question3_1.answer() != ""
+            valid = valid and (len(self.question3_1.answer().split()) == 2)
             valid = valid and self.question3_2.answer() != ""
             valid = valid and self.question3_3.answer() != ""
         valid = valid and self.question4_1.answer() != ""

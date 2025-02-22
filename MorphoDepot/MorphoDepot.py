@@ -623,7 +623,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         repo.index.add([f"{repoDir}/README.md",
                         f"{repoDir}/LICENSE.txt",
                         f"{repoDir}/MorphoDepotAccession.json",
-                        f"{repoDir}/Labels.ctbl",
+                        f"{repoDir}/{colorTableName}.ctbl",
         ])
         repo.index.commit("Initial commit")
 

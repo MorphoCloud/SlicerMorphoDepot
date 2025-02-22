@@ -4,10 +4,10 @@ import json
 import logging
 import os
 import platform
+import requests
 from typing import Annotated, Optional
 
 import qt
-import vtk
 
 import slicer
 from slicer.i18n import tr as _
@@ -426,7 +426,9 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         colorNode = slicer.util.loadColorTable(colorPath)
 
         # TODO: move from single volume file to segmentation specification json
-        volumePath = f"{self.localRepo.working_dir}/master_volume"
+        volumePath = f"{self.localRepo.working_dir}/source_volume"
+        if not os.path.exists(volumePath):
+            volumePath = f"{self.localRepo.working_dir}/master_volume" # for backwards compatibility
         volumeURL = open(volumePath).read().strip()
         nrrdPath = f"{slicer.app.temporaryPath}/{upstreamNameWithOwner.replace('/', '-')}-volume.nrrd"
         slicer.util.downloadFile(volumeURL, nrrdPath)
@@ -579,6 +581,84 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         """.replace("\n"," ").split()
         commandList += ["--body", "Merging and closing"]
         self.gh(commandList)
+
+    def createAccessionRepo(self, sourceVolume, colorTable, accessionData):
+
+        repoName = accessionData['7_1'][1]
+        repoDir = f"{self.localRepositoryDirectory()}/{repoName}"
+        os.makedirs(repoDir)
+
+        # save data
+        sourceFileName = sourceVolume.GetName()
+        sourceFilePath = f"{repoDir}/{sourceFileName}.nrrd"
+        slicer.util.saveNode(sourceVolume, sourceFilePath)
+        colorTableName = colorTable.GetName()
+        slicer.util.saveNode(colorTable, f"{repoDir}/{colorTableName}.ctbl")
+
+        # write accessionData file
+        fp = open(f"{repoDir}/MorphoDepotAccession.json", "w")
+        fp.write(json.dumps(accessionData))
+        fp.close()
+
+        # write license file
+        if accessionData["6_2"][1].startswith("CC BY-NC"):
+            licenseURL = "https://creativecommons.org/licenses/by-nc/4.0/legalcode.txt"
+        else:
+            licenseURL = "https://creativecommons.org/licenses/by/4.0/legalcode.txt"
+        response = requests.get(licenseURL)
+        fp = open(f"{repoDir}/LICENSE.txt", "w")
+        fp.write(response.content.decode())
+        fp.close()
+
+        # write readme file
+        fp = open(f"{repoDir}/README.md", "w")
+        fp.write(f"""
+        Repository for segmentation of a specimen scan.  See [this file](MorphoDepotAccession.json) for details.
+        """)
+        fp.close()
+
+        # create initial repo
+        repo = git.Repo.init(repoDir)
+
+        repo.index.add([f"{repoDir}/README.md",
+                        f"{repoDir}/LICENSE.txt",
+                        f"{repoDir}/MorphoDepotAccession.json",
+                        f"{repoDir}/{colorTableName}.ctbl",
+        ])
+        repo.index.commit("Initial commit")
+
+        self.gh(f"repo create {repoName} --add-readme --disable-wiki --public --source {repoDir} --push")
+
+        self.localRepo = repo
+        repoNameWithOwner = self.nameWithOwner("origin")
+
+        self.gh(f"repo edit {repoNameWithOwner} --enable-projects=false --enable-discussions=false")
+
+        if accessionData['2_1'][1] == "Yes":
+            idigbioURL = accessionData['2_2']
+            specimenID = idigbioURL.split("/")[-1]
+            import idigbio
+            api = idigbio.json()
+            idigbioData = api.view("records", specimenID)
+            speciesString = idigbioData['data']['ala:species']
+        else:
+            speciesString = accessionData['3_1'][1]
+        speciesString = speciesString.lower().replace(" ", "-")
+
+        self.gh(f"repo edit {repoNameWithOwner} --add-topic morphodepot --add-topic md-{speciesString}")
+
+        # create initial release and add asset
+        self.gh(f"release create --repo {repoNameWithOwner} v1 --notes Initial-release")
+        self.gh(f"release upload --repo {repoNameWithOwner} v1 {sourceFilePath}#{sourceFileName}.nrrd")
+
+        # write source volume pointer file
+        fp = open(f"{repoDir}/source_volume", "w")
+        fp.write(f"https://github.com/{repoNameWithOwner}/releases/download/v1/{sourceFileName}.nrrd")
+        fp.close()
+
+        repo.index.add([f"{repoDir}/source_volume"])
+        repo.index.commit("Add source file url file")
+        repo.remote(name="origin").push()
 
 
 #

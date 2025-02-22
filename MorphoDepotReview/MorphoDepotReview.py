@@ -119,9 +119,11 @@ class MorphoDepotReviewWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         if slicer.util.confirmOkCancelDisplay("Close scene and load PR?"):
             self.ui.currentPRLabel.text = f"PR: {item.text()}"
             slicer.mrmlScene.Clear()
-            self.logic.loadPR(pr, repoDirectory)
-            self.ui.prCollapsibleButton.enabled = True
-            slicer.util.showStatusMessage(f"Start reviewing {item.text()}")
+            if self.logic.loadPR(pr, repoDirectory):
+                self.ui.prCollapsibleButton.enabled = True
+                slicer.util.showStatusMessage(f"Start reviewing {item.text()}")
+            else:
+                slicer.util.showStatusMessage(f"PR load failed")
 
     def onRequestChanges(self):
         slicer.util.showStatusMessage(f"Requesting changes")

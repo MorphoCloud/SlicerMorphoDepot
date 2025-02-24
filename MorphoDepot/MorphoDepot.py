@@ -618,7 +618,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         fp.close()
 
         # create initial repo
-        repo = git.Repo.init(repoDir)
+        repo = git.Repo.init(repoDir, initial_branch='main')
 
         repo.index.add([f"{repoDir}/README.md",
                         f"{repoDir}/LICENSE.txt",

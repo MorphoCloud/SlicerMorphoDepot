@@ -108,6 +108,8 @@ class MorphoDepotAccessionWidget(ScriptedLoadableModuleWidget):
         with slicer.util.tryWithErrorDisplay(_("Trouble creating repository"), waitCursor=True):
             sourceVolume = self.ui.inputSelector.currentNode()
             colorTable = self.colorSelector.currentNode()
+            accessionData['scanDimensions'] = str(sourceVolume.GetImageData().GetDimensions())
+            accessionData['scanSpacing'] = str(sourceVolume.GetSpacing())
             self.logic.createAccessionRepo(sourceVolume, colorTable, accessionData)
         self.ui.createRepository.enabled = False
         self.ui.openRepository.enabled = True
@@ -132,6 +134,90 @@ class MorphoDepotAccessionForm():
         5: "Partial specimen",
         6: "Licensing",
         7: "Github"
+    }
+
+    formQuestions = {
+        # each question is a tuple of question, answer options, and tooltip
+        # This info is pure data, but is closely coupled to the GUI and validation code below for usability
+
+        # section 1
+        "specimenSource" : (
+            "Is your data from a commercially acquired organism or from an accessioned specimen (i.e., from a natural history collection)?",
+           ["Commercially acquired", "Accessioned specimen"],
+           ""
+        ),
+
+        # section 2
+        "iDigBioAccessioned" : (
+            "Is your specimen's species in the iDigBio database?",
+            ["Yes", "No"],
+            ""
+        ),
+        "iDigBioURL" : (
+            "Enter URL from iDigBio:",
+            "",
+            "Go to iDigBio portal, search for the specimen, click the link and paste the URL below (it should look something like this: https://www.idigbio.org/portal/records/b328320d-268e-4bfc-ae70-1c00f0891f89)"
+        ),
+
+        # section 3
+        "species" : (
+            "What is your specimen's species?",
+            "",
+            "Enter a valid genus and species for your specimen and use the 'Check species' button to confirm.  If unsure, use the GBIF web page to search"
+        ),
+        "biologicalSex" : (
+            "What is your specimen's sex?",
+            ["Male", "Female", "Unknown"],
+            ""
+        ),
+        "developmentalStage" : (
+            "What is your specimen's developmental stage?",
+            ["Prenatal (fetus, embryo)", "Juvenile (neonatal to subadult)", "Adult"],
+            ""
+        ),
+
+        # section 4
+        "modality" : (
+            "What is the modality of the acquisition?",
+            ["Micro CT (or synchrotron)", "Medical CT", "MRI", "Lightsheet microscopy", "3D confocal microscopy", "Surface model (photogrammetry, structured light, or laser scanning)"],
+            ""
+        ),
+        "contrastEnhancement" : (
+            "Is there contrast enhancement treatment applied to the specimen (iodine, phosphotungstenic acid, gadolinium, casting agents, etc)?",
+            ["Yes", "No"],
+            ""
+        ),
+        "imageContents" : (
+            "What is in the image?",
+            ["Whole specimen", "Partial specimen"],
+            ""
+        ),
+
+        # section 5
+        "anatomicalAreas" : (
+            "What anatomical area(s) is/are present in the scan?",
+            ["Head and neck (e.g., cranium, mandible, proximal vertebral colum)", "Pectoral girdle", "Forelimb", "Trunk (e.g. body cavity, torso, spine, ribs)", "Pelvic girdle", "Hind limg", "Tail", "Other"],
+            ""
+        ),
+
+        # section 6
+        "redistributionAcknowledgement" : (
+            "Acknowledgement:",
+            ["I have the right to allow redistribution of this data."],
+            ""
+        ),
+        "license" : (
+            "Choose a license:",
+            ["CC BY 4.0 (requires attribution, allows commercial usage)", "CC BY-NC 4.0 (requires attribution, non-commercial usage only)"],
+            ""
+        ),
+
+        # section 7
+        "githubRepoName" : (
+            "What should the repository in your github account called? This needs to be unique value for your account.",
+            "",
+            "Name should be fairly short and contain only letters, numbers, and the dash, underscore, or dot characters."
+        )
     }
 
     def __init__(self, workflowMode=False, validationCallback=None):
@@ -183,62 +269,78 @@ class MorphoDepotAccessionForm():
             self.sectionWidgets[section] = sectionWidget
             self.form.layout().addWidget(sectionWidget)
 
+        form = MorphoDepotAccessionForm.formQuestions
+        self.questions = {}
+
         # section 1
         layout = self.sectionWidgets[1].layout()
-        self.question1_1 = FormRadioQuestion("Is your data from a commercially acquired organism or from an accessioned specimen (i.e., from a natural history collection)?", ["Commercially acquired", "Accessioned specimen"], self.validateForm)
-        layout.addWidget(self.question1_1.questionBox)
+        q,a,t = form["specimenSource"]
+        self.questions["specimenSource"] = FormRadioQuestion(q, a, self.validateForm)
+        layout.addWidget(self.questions["specimenSource"].questionBox)
 
         # section 2
         layout = self.sectionWidgets[2].layout()
-        self.question2_1 = FormRadioQuestion("Is your specimen's species in the iDigBio database?", ["Yes", "No"], self.validateForm)
-        layout.addWidget(self.question2_1.questionBox)
+        q,a,t = form["iDigBioAccessioned"]
+        self.questions["iDigBioAccessioned"] = FormRadioQuestion(q, a, self.validateForm)
+        layout.addWidget(self.questions["iDigBioAccessioned"].questionBox)
         self.gotoiDigBioButton = qt.QPushButton("Open iDigBio")
         self.gotoiDigBioButton.connect("clicked()", lambda : qt.QDesktopServices.openUrl(qt.QUrl("https://iDigBio.org")))
         layout.addWidget(self.gotoiDigBioButton)
-        self.question2_2 = FormTextQuestion("Enter URL from iDigBio:", self.validateForm)
-        self.question2_2.questionBox.toolTip = "Go to iDigBio portal, search for the specimen, click the link and paste the URL below (it should look something like this: https://www.idigbio.org/portal/records/b328320d-268e-4bfc-ae70-1c00f0891f89)"
-        layout.addWidget(self.question2_2.questionBox)
+        q,a,t = form["iDigBioURL"]
+        self.questions["iDigBioURL"] = FormTextQuestion(q, self.validateForm)
+        self.questions["iDigBioURL"].questionBox.toolTip = t
+        layout.addWidget(self.questions["iDigBioURL"].questionBox)
 
         # section 3
         layout = self.sectionWidgets[3].layout()
-        self.question3_1 = FormSpeciesQuestion("What is your specimen's species?", self.validateForm)
-        self.question3_1.questionBox.toolTip = "Enter a valid genus and species for your specimen and use the 'Check species' button to confirm.  If unsure, use the GBIF web page to search"
-        layout.addWidget(self.question3_1.questionBox)
+        q,a,t = form["species"]
+        self.questions["species"] = FormSpeciesQuestion(q, self.validateForm)
+        self.questions["species"].questionBox.toolTip = t
+        layout.addWidget(self.questions["species"].questionBox)
         self.gotoGBIFButton = qt.QPushButton("Open GBIF")
         self.gotoGBIFButton.connect("clicked()", lambda : qt.QDesktopServices.openUrl(qt.QUrl("https://gbif.org")))
         layout.addWidget(self.gotoGBIFButton)
-        self.question3_2 = FormRadioQuestion("What is your specimen's sex?", ["Male", "Female", "Unknown"], self.validateForm)
-        layout.addWidget(self.question3_2.questionBox)
-        self.question3_3 = FormRadioQuestion("What is your specimen's developmental stage?", ["Prenatal (fetus, embryo)", "Juvenile (neonatal to subadult)", "Adult"], self.validateForm)
-        layout.addWidget(self.question3_3.questionBox)
+        q,a,t = form["biologicalSex"]
+        self.questions["biologicalSex"] = FormRadioQuestion(q, a,  self.validateForm)
+        layout.addWidget(self.questions["biologicalSex"].questionBox)
+        q,a,t = form["developmentalStage"]
+        self.questions["developmentalStage"] = FormRadioQuestion(q, a, self.validateForm)
+        layout.addWidget(self.questions["developmentalStage"].questionBox)
 
         # section 4
         layout = self.sectionWidgets[4].layout()
-        self.question4_1 = FormRadioQuestion("What is the modality of the acquisition?", ["Micro CT (or synchrotron)", "Medical CT", "MRI", "Lightsheet microscopy", "3D confocal microscopy", "Surface model (photogrammetry, structured light, or laser scanning)"], self.validateForm)
-        layout.addWidget(self.question4_1.questionBox)
-        self.question4_2 = FormRadioQuestion("Is there contrast enhancement treatment applied to the specimen (iodine, phosphotungstenic acid, gadolinium, casting agents, etc)?", ["Yes", "No"], self.validateForm)
-        layout.addWidget(self.question4_2.questionBox)
-        self.question4_3 = FormRadioQuestion("What is in the image?", ["Whole specimen", "Partial specimen"], self.validateForm)
-        layout.addWidget(self.question4_3.questionBox)
+        q,a,t = form["modality"]
+        self.questions["modality"] = FormRadioQuestion(q, a, self.validateForm)
+        layout.addWidget(self.questions["modality"].questionBox)
+        q,a,t = form["contrastEnhancement"]
+        self.questions["contrastEnhancement"] = FormRadioQuestion("Is there contrast enhancement treatment applied to the specimen (iodine, phosphotungstenic acid, gadolinium, casting agents, etc)?", ["Yes", "No"], self.validateForm)
+        layout.addWidget(self.questions["contrastEnhancement"].questionBox)
+        q,a,t = form["imageContents"]
+        self.questions["imageContents"] = FormRadioQuestion(q, a, self.validateForm)
+        layout.addWidget(self.questions["imageContents"].questionBox)
 
         # section 5
         layout = self.sectionWidgets[5].layout()
-        self.question5_1 = FormCheckBoxesQuestion("What anatomical area(s) is/are present in the scan?", ["Head and neck (e.g., cranium, mandible, proximal vertebral colum)", "Pectoral girdle", "Forelimb", "Trunk (e.g. body cavity, torso, spine, ribs)", "Pelvic girdle", "Hind limg", "Tail", "Other"], self.validateForm)
-        layout.addWidget(self.question5_1.questionBox)
+        q,a,t = form["anatomicalAreas"]
+        self.questions["anatomicalAreas"] = FormCheckBoxesQuestion(q, a, self.validateForm)
+        layout.addWidget(self.questions["anatomicalAreas"].questionBox)
 
         # section 6
         layout = self.sectionWidgets[6].layout()
-        self.question6_1 = FormCheckBoxesQuestion("Acknowledgement:", ["I have the right to allow redistribution of this data."], self.validateForm)
-        layout.addWidget(self.question6_1.questionBox)
-        self.question6_2 = FormRadioQuestion("Choose a license:", ["CC BY 4.0 (requires attribution, allows commercial usage)", "CC BY-NC 4.0 (requires attribution, non-commercial usage only)"], self.validateForm)
-        self.question6_2.optionButtons["CC BY 4.0 (requires attribution, allows commercial usage)"].checked=True
-        layout.addWidget(self.question6_2.questionBox)
+        q,a,t = form["redistributionAcknowledgement"]
+        self.questions["redistributionAcknowledgement"] = FormCheckBoxesQuestion(q, a, self.validateForm)
+        layout.addWidget(self.questions["redistributionAcknowledgement"].questionBox)
+        q,a,t = form["license"]
+        self.questions["license"] = FormRadioQuestion(q, a, self.validateForm)
+        self.questions["license"].optionButtons[a[0]].checked=True
+        layout.addWidget(self.questions["license"].questionBox)
 
         # section 7
         layout = self.sectionWidgets[7].layout()
-        self.question7_1 = FormTextQuestion("What should the repository in your github account called? This needs to be unique value for your account.", self.validateForm)
-        self.question7_1.questionBox.toolTip = "Name should be fairly short and contain only letters, numbers, and the dash, underscore, or dot characters."
-        layout.addWidget(self.question7_1.questionBox)
+        q,a,t = form["githubRepoName"]
+        self.questions["githubRepoName"] = FormTextQuestion(q, self.validateForm)
+        self.questions["githubRepoName"].questionBox.toolTip = t
+        layout.addWidget(self.questions["githubRepoName"].questionBox)
 
         if self.workflowMode:
             self.showSection(1)
@@ -253,20 +355,20 @@ class MorphoDepotAccessionForm():
         import re
 
         # first, update the visibility of dependent sections
-        if self.question1_1.answer() == "Commercially acquired":
+        if self.questions["specimenSource"].answer() == "Commercially acquired":
             self.sectionWidgets[2].hide()
             self.sectionWidgets[3].show()
         else:
             self.sectionWidgets[2].show()
-            if self.question2_1.answer() == "Yes":
-                self.question2_2.questionBox.show()
+            if self.questions["iDigBioAccessioned"].answer() == "Yes":
+                self.questions["iDigBioURL"].questionBox.show()
                 self.gotoiDigBioButton.show()
                 self.sectionWidgets[3].hide()
             else:
-                self.question2_2.questionBox.hide()
+                self.questions["iDigBioURL"].questionBox.hide()
                 self.gotoiDigBioButton.hide()
                 self.sectionWidgets[3].show()
-        if self.question4_3.answer() == "Partial specimen":
+        if self.questions["imageContents"].answer() == "Partial specimen":
             self.sectionWidgets[5].show()
         else:
             self.sectionWidgets[5].hide()
@@ -275,51 +377,40 @@ class MorphoDepotAccessionForm():
         valid = True
 
         section3Required = False
-        if self.question1_1.answer() == "":
+        if self.questions["specimenSource"].answer() == "":
             valid = False
-        if self.question1_1.answer() == "Commercially acquired":
+        if self.questions["specimenSource"].answer() == "Commercially acquired":
             section3Required = True
-        elif self.question1_1.answer() == "Accessioned specimen":
-            if self.question2_1.answer() == "No":
+        elif self.questions["specimenSource"].answer() == "Accessioned specimen":
+            if self.questions["iDigBioAccessioned"].answer() == "No":
                 section3Required = True
-            elif self.question2_1.answer() == "Yes":
+            elif self.questions["iDigBioAccessioned"].answer() == "Yes":
                 section3Required = False
-                if not self.question2_2.answer().startswith("https://portal.idigbio.org/portal/records"):
+                if not self.questions["iDigBioURL"].answer().startswith("https://portal.idigbio.org/portal/records"):
                     valid = False
         else:
             valid = False
         if section3Required:
-            valid = valid and self.question3_1.answer() != ""
-            valid = valid and (len(self.question3_1.answer().split()) == 2)
-            valid = valid and self.question3_2.answer() != ""
-            valid = valid and self.question3_3.answer() != ""
-        valid = valid and self.question4_1.answer() != ""
-        valid = valid and self.question4_2.answer() != ""
-        valid = valid and self.question4_3.answer() != ""
-        if self.question4_3.answer() == "Partial specimen":
-            valid = valid and self.question5_1.answer() != []
-        valid = valid and self.question6_1.answer() != ""
-        valid = valid and self.question6_2.answer() != ""
-        valid = valid and self.question7_1.answer() != ""
+            valid = valid and self.questions["species"].answer() != ""
+            valid = valid and (len(self.questions["species"].answer().split()) == 2)
+            valid = valid and self.questions["biologicalSex"].answer() != ""
+            valid = valid and self.questions["developmentalStage"].answer() != ""
+        valid = valid and self.questions["modality"].answer() != ""
+        valid = valid and self.questions["contrastEnhancement"].answer() != ""
+        valid = valid and self.questions["imageContents"].answer() != ""
+        if self.questions["imageContents"].answer() == "Partial specimen":
+            valid = valid and self.questions["anatomicalAreas"].answer() != []
+        valid = valid and self.questions["redistributionAcknowledgement"].answer() != ""
+        valid = valid and self.questions["license"].answer() != ""
+        valid = valid and self.questions["githubRepoName"].answer() != ""
         repoNameRegex = r"^[a-zA-Z][a-zA-Z0-9-_.]*$"
-        valid = valid and (re.match(repoNameRegex, self.question7_1.answer()) != None)
+        valid = valid and (re.match(repoNameRegex, self.questions["githubRepoName"].answer()) != None)
         self.validationCallback(valid)
 
     def accessionData(self):
         data = {}
-        data["1_1"] = (self.question1_1.questionText.document.toPlainText(), self.question1_1.answer())
-        data["2_1"] = (self.question2_1.questionText.document.toPlainText(), self.question2_1.answer())
-        data["2_2"] = (self.question2_2.questionText.document.toPlainText(), self.question2_2.answer())
-        data["3_1"] = (self.question3_1.questionText.document.toPlainText(), self.question3_1.answer())
-        data["3_2"] = (self.question3_2.questionText.document.toPlainText(), self.question3_2.answer())
-        data["3_3"] = (self.question3_3.questionText.document.toPlainText(), self.question3_3.answer())
-        data["4_1"] = (self.question4_1.questionText.document.toPlainText(), self.question4_1.answer())
-        data["4_2"] = (self.question4_2.questionText.document.toPlainText(), self.question4_2.answer())
-        data["4_3"] = (self.question4_3.questionText.document.toPlainText(), self.question4_3.answer())
-        data["5_1"] = (self.question5_1.questionText.document.toPlainText(), self.question5_1.answer())
-        data["6_1"] = (self.question6_1.questionText.document.toPlainText(), self.question6_1.answer())
-        data["6_2"] = (self.question6_2.questionText.document.toPlainText(), self.question6_2.answer())
-        data["7_1"] = (self.question7_1.questionText.document.toPlainText(), self.question7_1.answer())
+        for key in MorphoDepotAccessionForm.formQuestions.keys():
+            data[key] = (self.questions[key].questionText.document.toPlainText(), self.questions[key].answer())
         return data
 
 

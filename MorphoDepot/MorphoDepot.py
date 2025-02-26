@@ -584,7 +584,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
     def createAccessionRepo(self, sourceVolume, colorTable, accessionData):
 
-        repoName = accessionData['7_1'][1]
+        repoName = accessionData['githubRepoName'][1]
         repoDir = f"{self.localRepositoryDirectory()}/{repoName}"
         os.makedirs(repoDir)
 
@@ -597,11 +597,11 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
         # write accessionData file
         fp = open(f"{repoDir}/MorphoDepotAccession.json", "w")
-        fp.write(json.dumps(accessionData))
+        fp.write(json.dumps(accessionData, indent=4))
         fp.close()
 
         # write license file
-        if accessionData["6_2"][1].startswith("CC BY-NC"):
+        if accessionData["license"][1].startswith("CC BY-NC"):
             licenseURL = "https://creativecommons.org/licenses/by-nc/4.0/legalcode.txt"
         else:
             licenseURL = "https://creativecommons.org/licenses/by/4.0/legalcode.txt"
@@ -610,10 +610,27 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         fp.write(response.content.decode())
         fp.close()
 
+        if accessionData['iDigBioAccessioned'][1] == "Yes":
+            idigbioURL = accessionData['iDigBioURL']
+            specimenID = idigbioURL.split("/")[-1]
+            import idigbio
+            api = idigbio.json()
+            idigbioData = api.view("records", specimenID)
+            speciesString = idigbioData['data']['ala:species']
+        else:
+            speciesString = accessionData['species'][1]
+        speciesTopicString = speciesString.lower().replace(" ", "-")
+
         # write readme file
         fp = open(f"{repoDir}/README.md", "w")
         fp.write(f"""
-        Repository for segmentation of a specimen scan.  See [this file](MorphoDepotAccession.json) for details.
+## MorphoDepot Repository
+Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepotAccession.json) for specimen details.
+* Species: {speciesString}
+* Modality: {accessionData['modality'][1]}
+* Contrast: {accessionData['contrastEnhancement'][1]}
+* Dimensions: {accessionData['scanDimensions']}
+* Spacing (mm): {accessionData['scanSpacing']}
         """)
         fp.close()
 
@@ -634,18 +651,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
         self.gh(f"repo edit {repoNameWithOwner} --enable-projects=false --enable-discussions=false")
 
-        if accessionData['2_1'][1] == "Yes":
-            idigbioURL = accessionData['2_2']
-            specimenID = idigbioURL.split("/")[-1]
-            import idigbio
-            api = idigbio.json()
-            idigbioData = api.view("records", specimenID)
-            speciesString = idigbioData['data']['ala:species']
-        else:
-            speciesString = accessionData['3_1'][1]
-        speciesString = speciesString.lower().replace(" ", "-")
-
-        self.gh(f"repo edit {repoNameWithOwner} --add-topic morphodepot --add-topic md-{speciesString}")
+        self.gh(f"repo edit {repoNameWithOwner} --add-topic morphodepot --add-topic md-{speciesTopicString}")
 
         # create initial release and add asset
         self.gh(f"release create --repo {repoNameWithOwner} v1 --notes Initial-release")

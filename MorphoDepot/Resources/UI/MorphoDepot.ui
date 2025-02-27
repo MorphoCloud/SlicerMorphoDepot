@@ -111,6 +111,16 @@
       <item>
        <widget class="QListWidget" name="prList"/>
       </item>
+      <item>
+       <widget class="QPushButton" name="openPRPageButton">
+        <property name="enabled">
+         <bool>false</bool>
+        </property>
+        <property name="text">
+         <string>Open PR page</string>
+        </property>
+       </widget>
+      </item>
      </layout>
     </widget>
    </item>

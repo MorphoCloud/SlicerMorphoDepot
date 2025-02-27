@@ -108,11 +108,14 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
 
         # Connections
         self.ui.issueList.itemDoubleClicked.connect(self.onIssueDoubleClicked)
+        self.ui.prList.itemSelectionChanged.connect(self.onPRSelectionChanged)
         self.ui.commitButton.clicked.connect(self.onCommit)
         self.ui.reviewButton.clicked.connect(self.onRequestReview)
         self.ui.refreshButton.connect("clicked(bool)", self.onRefresh)
         self.ui.repoDirectory.connect("currentPathChanged(QString)", self.onRepoDirectoryChanged)
         self.ui.ghPath.connect("currentPathChanged(QString)", self.onGHPathChanged)
+        self.ui.openPRPageButton.clicked.connect(self.onOpenPRPageButtonClicked)
+
 
     def cleanup(self) -> None:
         """Called when the application closes and the module widget is destroyed."""
@@ -155,6 +158,25 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
             self.prsByItem[item] = pr
             self.ui.prList.addItem(item)
         slicer.util.showStatusMessage(f"{len(prList)} prs")
+
+    def onPRSelectionChanged(self):
+        self.ui.openPRPageButton.enabled = False
+        self.selectedPR = None
+        selectedItems = self.ui.prList.selectedItems()
+        if selectedItems:
+            item = selectedItems[0]
+            self.selectedPR = self.prsByItem[item]
+            self.ui.openPRPageButton.enabled = True
+
+    def onOpenPRPageButtonClicked(self):
+        """Open the currently selected PR in the browser."""
+        if self.selectedPR:
+            repoNameWithOwner = self.selectedPR["repository"]["nameWithOwner"]
+            prNumber = self.selectedPR["number"]
+            prURL = qt.QUrl(f"https://github.com/{repoNameWithOwner}/pull/{prNumber}")
+            qt.QDesktopServices.openUrl(prURL)
+        else:
+            slicer.util.errorDisplay("No PR selected.")
 
     def onIssueDoubleClicked(self, item):
         slicer.util.showStatusMessage(f"Loading {item.text()}")

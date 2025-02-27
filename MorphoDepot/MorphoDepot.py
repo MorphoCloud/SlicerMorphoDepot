@@ -607,7 +607,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             licenseURL = "https://creativecommons.org/licenses/by/4.0/legalcode.txt"
         response = requests.get(licenseURL)
         fp = open(f"{repoDir}/LICENSE.txt", "w")
-        fp.write(response.content.decode(errors="namereplace"))
+        fp.write(response.content.decode('ascii', errors="ignore"))
         fp.close()
 
         if accessionData['iDigBioAccessioned'][1] == "Yes":

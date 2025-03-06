@@ -58,6 +58,7 @@ class MorphoDepotAccessionWidget(ScriptedLoadableModuleWidget):
         try:
             import pygbif
         except ModuleNotFoundError:
+            slicer.util.messageBox("The pygbif package is required.  Installation may take a minute.")
             slicer.util.showStatusMessage("Installing pygbif package...")
             slicer.util.pip_install("pygbif")
             import pygbif
@@ -65,6 +66,7 @@ class MorphoDepotAccessionWidget(ScriptedLoadableModuleWidget):
         try:
             import idigbio
         except ModuleNotFoundError:
+            slicer.util.messageBox("The idigbio package is required.  Installation may take a minute.")
             slicer.util.showStatusMessage("Installing idigbio package...")
             slicer.util.pip_install("idigbio")
             import idigbio

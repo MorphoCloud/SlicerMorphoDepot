@@ -257,8 +257,13 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.executableExtension = '.exe' if os.name == 'nt' else ''
         modulePath = os.path.split(slicer.modules.morphodepot.path)[0]
         self.resourcesPath = modulePath + "/Resources"
-        self.gitPath = self.resourcesPath + "/pixi/.pixi/envs/default/bin/git" + self.executableExtension
-        self.ghPath = self.resourcesPath + "/pixi/.pixi/envs/default/bin/gh" + self.executableExtension
+
+        if os.name == 'nt':
+            self.gitPath = self.resourcesPath + "/pixi/.pixi/envs/default/Library/bin/git.exe"
+            self.ghPath = self.resourcesPath + "/pixi/.pixi/envs/default/Scripts/gh.exe"
+        else:
+            self.gitPath = self.resourcesPath + "/pixi/.pixi/envs/default/bin/git"
+            self.ghPath = self.resourcesPath + "/pixi/.pixi/envs/default/bin/gh"
 
         self.git = None
         if os.path.exists(self.gitPath):

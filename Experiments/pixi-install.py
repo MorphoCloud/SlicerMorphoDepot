@@ -10,7 +10,7 @@ cd /tmp/pixi-test-env
 /tmp/pixi/bin/pixi add gh
 
 
-# window
+# windows
 
 scriptPath = slicer.app.temporaryPath + "/pixi-install.ps1"
 slicer.util.downloadFile("https://pixi.sh/install.ps1", scriptPath)

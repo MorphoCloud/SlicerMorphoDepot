@@ -1,4 +1,3 @@
-import git
 import glob
 import json
 import logging
@@ -86,11 +85,6 @@ class MorphoDepotReviewWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         ghProgressMethod = lambda message : MorphoDepot.MorphoDepotWidget.ghProgressMethod(None, message)
         self.logic = MorphoDepot.MorphoDepotLogic(ghProgressMethod)
 
-        # set up the platform-dependent path to the gh command
-        ghPath = self.logic.ghPathSearch()
-        if ghPath == "":
-            slicer.util.errorDisplay("Could not find the gh command on your system.  Please see the documentation on how to install it for your platform.\n\nIf you have it installed, set the path in the MorphoDepot advanced settings.")
-
         self.ui.prCollapsibleButton.enabled = False
 
         # Connections
@@ -98,6 +92,18 @@ class MorphoDepotReviewWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         self.ui.prList.itemDoubleClicked.connect(self.onPRDoubleClicked)
         self.ui.requestChangesButton.clicked.connect(self.onRequestChanges)
         self.ui.approveButton.clicked.connect(self.onApprove)
+
+    def enter(self):
+        if not self.logic.git:
+            MorphoDepot.MorphoDepotWidget.offerInstallation()
+        if self.logic.git:
+            self.ui.prCollapsibleButton.enabled = True
+            self.ui.prsCollapsibleButton.enabled = True
+            self.ui.refreshButton.enabled = True
+        else:
+            self.ui.prCollapsibleButton.enabled = False
+            self.ui.prsCollapsibleButton.enabled = False
+            self.ui.refreshButton.enabled = False
 
     def updatePRList(self):
         slicer.util.showStatusMessage(f"Updating PRs")

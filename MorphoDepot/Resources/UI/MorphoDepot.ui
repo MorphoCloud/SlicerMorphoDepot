@@ -18,6 +18,32 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
+    <widget class="ctkCollapsibleButton" name="configureCollapsibleButton">
+     <property name="text">
+      <string>Configuration</string>
+     </property>
+     <property name="collapsed">
+      <bool>false</bool>
+     </property>
+     <layout class="QFormLayout" name="formLayout">
+      <item row="3" column="0">
+       <widget class="QLabel" name="label_3">
+        <property name="text">
+         <string>Local repository directory</string>
+        </property>
+       </widget>
+      </item>
+      <item row="4" column="0" colspan="2">
+       <widget class="ctkPathLineEdit" name="repoDirectory">
+        <property name="sizeAdjustPolicy">
+         <enum>ctkPathLineEdit::AdjustToContents</enum>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
     <widget class="QPushButton" name="refreshButton">
      <property name="text">
       <string>Refresh Github</string>
@@ -120,42 +146,6 @@
          <string>Open PR page</string>
         </property>
        </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item>
-    <widget class="ctkCollapsibleButton" name="CollapsibleButton">
-     <property name="text">
-      <string>Advanced</string>
-     </property>
-     <property name="collapsed">
-      <bool>true</bool>
-     </property>
-     <layout class="QFormLayout" name="formLayout">
-      <item row="3" column="0">
-       <widget class="QLabel" name="label_3">
-        <property name="text">
-         <string>Local repository directory</string>
-        </property>
-       </widget>
-      </item>
-      <item row="4" column="0" colspan="2">
-       <widget class="ctkPathLineEdit" name="repoDirectory">
-        <property name="sizeAdjustPolicy">
-         <enum>ctkPathLineEdit::AdjustToContents</enum>
-        </property>
-       </widget>
-      </item>
-      <item row="5" column="0">
-       <widget class="QLabel" name="label">
-        <property name="text">
-         <string>gh executeable path</string>
-        </property>
-       </widget>
-      </item>
-      <item row="6" column="0" colspan="2">
-       <widget class="ctkPathLineEdit" name="ghPath"/>
       </item>
      </layout>
     </widget>

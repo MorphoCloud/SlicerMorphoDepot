@@ -54,7 +54,6 @@ class MorphoDepotAccessionWidget(ScriptedLoadableModuleWidget):
         # Uses MorphoDepot logic and widget so all related methods are together
         ghProgressMethod = lambda message : MorphoDepot.MorphoDepotWidget.ghProgressMethod(None, message)
         self.logic = MorphoDepot.MorphoDepotLogic(ghProgressMethod)
-        self.logic.ghPathSearch()
 
         try:
             import pygbif
@@ -98,6 +97,17 @@ class MorphoDepotAccessionWidget(ScriptedLoadableModuleWidget):
         self.ui.createRepository.clicked.connect(self.onCreateRepository)
         self.ui.openRepository.clicked.connect(self.onOpenRepository)
         self.ui.clearForm.clicked.connect(self.onClearForm)
+
+
+    def enter(self):
+        if not self.logic.git:
+            MorphoDepot.MorphoDepotWidget.offerInstallation()
+        if self.logic.git:
+            self.ui.inputsCollapsibleButton.enabled = True
+            self.ui.accessionCollapsibleButton.enabled = True
+        else:
+            self.ui.inputsCollapsibleButton.enabled = False
+            self.ui.accessionCollapsibleButton.enabled = False
 
     def onCreateRepository(self):
         if self.ui.inputSelector.currentNode() == None or self.colorSelector.currentNode() == None:

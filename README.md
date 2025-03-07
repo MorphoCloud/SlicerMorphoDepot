@@ -1,9 +1,7 @@
 ![SlicerMorhpoDepotLogo](MorphoDepot.png)
 
-![SlicerMorphoDepotIcon](https://github.com/user-attachments/assets/e1bc35d5-af0e-43aa-a224-417e13e6d78d)
 
-
-# SlicerMorphoDepot
+# MorphoDepot
 Experiments and implementations related to the SlicerMorph MorphoDepot project.
 
 The goal is to use github infrastructure to manage multi-person segmentation projects.  A repository is used to manage segmentation of a specimen (e.g. a microCT of a fish) and issues are assigned to people to work on parts of the segmentation.  Pull requests are used to manage review and integration of segmentation tasks.

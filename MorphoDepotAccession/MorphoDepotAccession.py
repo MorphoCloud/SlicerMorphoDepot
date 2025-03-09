@@ -484,22 +484,71 @@ class FormTextQuestion(FormBaseQuestion):
 class FormSpeciesQuestion(FormTextQuestion):
     def __init__(self, question, validator):
         super().__init__(question, validator)
-        self.checkSpecies = qt.QPushButton("Check species")
-        self.checkSpecies.connect("clicked()", self.onCheckSpecies)
-        self.questionLayout.addWidget(self.checkSpecies)
+        self.checkSpeciesButton = qt.QPushButton("Check species")
+        self.checkSpeciesButton.connect("clicked()", self.onCheckSpecies)
+        self.questionLayout.addWidget(self.checkSpeciesButton)
+        self.searchButton = qt.QPushButton()
+        self.searchButton.setIcon(qt.QIcon(qt.QPixmap(":/Icons/Search.png")))
+        self.searchButton.connect("clicked()", self.onSearchSpecies)
+        self.questionLayout.addWidget(self.searchButton)
         self.speciesInfo = qt.QLabel()
         self.questionLayout.addWidget(self.speciesInfo)
+        self.searchDialog = None
+
+    def _setSpeciesInfoLabel(self, result):
+        if 'matchType' in result and result['matchType'] == "NONE":
+            labelText = "No match"
+        elif result['rank'] != "SPECIES":
+            labelText = f"Not a species ({result['canonicalName'] if 'canonicalName' in result else self.answerText.text} is rank {result['rank']})"
+        else:
+            labelText = f"Kingdom: {result['kingdom']}, Phylum: {result['phylum']}, Class: {result['class']},\nOrder: {result['order']}, Family: {result['family']}, Genus: {result['genus']}, Species: {result['species']}"
+        self.speciesInfo.text = labelText
+
+
+    def onSearchSpecies(self):
+        if self.searchDialog is None:
+            self.searchDialog = qt.QDialog()
+            self.searchDialog.setWindowTitle("Search for species")
+            self.searchDialogLayout = qt.QVBoxLayout()
+            self.searchDialog.setLayout(self.searchDialogLayout)
+            self.searchEntry = qt.QLineEdit()
+            self.searchEntry.connect("textChanged(QString)", self.onSearchTextChanged)
+            self.searchDialogLayout.addWidget(self.searchEntry)
+            self.searchResults = qt.QListWidget()
+            self.searchResults.connect("itemClicked(QListWidgetItem*)", self.onSearchResultClicked)
+            self.searchDialogLayout.addWidget(self.searchResults)
+            self.searchDialog.setModal(True)
+            mainWindow = slicer.util.mainWindow()
+            self.searchDialog.move(mainWindow.geometry.center() - self.searchDialog.rect.center())
+        self.searchEntry.text = self.answerText.text
+        self.searchDialog.show()
+
+    def onSearchTextChanged(self, text):
+        import pygbif
+        self.searchResults.clear()
+        if len(text) < 3:
+            return
+        try:
+            results = pygbif.species.name_suggest(q=text, rank="species")
+        except Exception as e:
+            slicer.util.errorDisplay(f"Error searching for species: {e}")
+            return
+        for result in results:
+            if result['rank'] == "SPECIES":
+                item = qt.QListWidgetItem(f"{result['canonicalName']} ({result['kingdom']})")
+                item.setData(qt.Qt.UserRole, result)
+                self.searchResults.addItem(item)
+
+    def onSearchResultClicked(self, item):
+        result = item.data(qt.Qt.UserRole)
+        self.answerText.text = result['canonicalName']
+        self.searchDialog.hide()
+        self._setSpeciesInfoLabel(result)
 
     def onCheckSpecies(self):
         import pygbif
         result = pygbif.species.name_backbone(self.answerText.text)
-        if result['matchType'] == "NONE":
-            labelText = "No match"
-        elif result['rank'] != "SPECIES":
-            labelText = f"Not a species ({self.answerText.text} is rank {result['rank']})"
-        else:
-            labelText = f"Kingdom: {result['kingdom']}, Phylum: {result['phylum']}, Class: {result['class']},\nOrder: {result['order']}, Family: {result['family']}, Genus: {result['genus']}, Species: {result['species']}"
-        self.speciesInfo.text = labelText
+        self._setSpeciesInfoLabel(result)
 
     def answer(self):
         return self.answerText.text

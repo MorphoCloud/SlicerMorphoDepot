@@ -2,6 +2,7 @@ import glob
 import json
 import logging
 import os
+import shutil
 import platform
 import requests
 import sys
@@ -258,12 +259,23 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         modulePath = os.path.split(slicer.modules.morphodepot.path)[0]
         self.resourcesPath = modulePath + "/Resources"
 
-        if os.name == 'nt':
-            self.gitPath = self.resourcesPath + "/pixi/.pixi/envs/default/Library/bin/git.exe"
-            self.ghPath = self.resourcesPath + "/pixi/.pixi/envs/default/Scripts/gh.exe"
+        # check if git and gh are in the path and use those if they are
+        gitPath = shutil.which("git")
+        ghPath = shutil.which("gh")
+        if gitPath:
+            self.gitPath = gitPath
         else:
-            self.gitPath = self.resourcesPath + "/pixi/.pixi/envs/default/bin/git"
-            self.ghPath = self.resourcesPath + "/pixi/.pixi/envs/default/bin/gh"
+            if os.name == 'nt':
+                self.gitPath = self.resourcesPath + "/pixi/.pixi/envs/default/Library/bin/git.exe"
+            else:
+                self.gitPath = self.resourcesPath + "/pixi/.pixi/envs/default/bin/git"
+        if ghPath:
+            self.ghPath = ghPath
+        else:
+            if os.name == 'nt':
+                self.ghPath = self.resourcesPath + "/pixi/.pixi/envs/default/Scripts/gh.exe"
+            else:
+                self.ghPath = self.resourcesPath + "/pixi/.pixi/envs/default/bin/gh"
 
         self.git = None
         if os.path.exists(self.gitPath):
@@ -279,7 +291,6 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         git.refresh(path=self.gitPath)
         self.git = git
         del os.environ['GIT_PYTHON_GIT_EXECUTABLE']
-
 
     def localRepositoryDirectory(self):
         repoDirectory = slicer.util.settingsValue("MorphoDepot/repoDirectory", "")

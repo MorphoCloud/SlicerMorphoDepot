@@ -496,10 +496,14 @@ class FormSpeciesQuestion(FormTextQuestion):
         self.searchDialog = None
 
     def _setSpeciesInfoLabel(self, result):
-        if 'matchType' in result and result['matchType'] == "NONE":
+        requiredKeys = ['matchType', 'rank', 'canonicalName', 'kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species']        
+        for key in requiredKeys:
+            if key not in result:
+                result[key] = "missing"
+        if result['matchType'] == "NONE":
             labelText = "No match"
         elif result['rank'] != "SPECIES":
-            labelText = f"Not a species ({result['canonicalName'] if 'canonicalName' in result else self.answerText.text} is rank {result['rank']})"
+            labelText = f"Not a species ({result['canonicalName']} is rank {result['rank']})"
         else:
             labelText = f"Kingdom: {result['kingdom']}, Phylum: {result['phylum']}, Class: {result['class']},\nOrder: {result['order']}, Family: {result['family']}, Genus: {result['genus']}, Species: {result['species']}"
         self.speciesInfo.text = labelText

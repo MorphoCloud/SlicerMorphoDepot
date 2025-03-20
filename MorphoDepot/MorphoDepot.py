@@ -500,7 +500,6 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         return True
 
     def loadFromLocalRepository(self):
-
         localDirectory = self.localRepo.working_dir
         branchName = self.localRepo.active_branch.name
         upstreamNameWithOwner = self.nameWithOwner("upstream")
@@ -508,7 +507,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.ghProgressMethod(f"Loading {branchName} into {localDirectory}")
 
         # TODO: move from single volume and color table file to segmentation specification json
-        colorPath = glob.glob(f"{localDirectory}/*.ctbl")[0]
+        colorPath = glob.glob(f"{localDirectory}/*.csv")[0]
         colorNode = slicer.util.loadColorTable(colorPath)
 
         # TODO: move from single volume file to segmentation specification json
@@ -541,16 +540,6 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             self.segmentationNode.CreateDefaultDisplayNodes()
             self.segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(volumeNode)
             self.segmentationNode.SetName(branchName)
-            # TODO: specify in the issue which segments in the color table should be included in issue segmentation
-            for colorIndex in range(1,colorNode.GetNumberOfColors()):
-                color = [0]*4
-                colorNode.GetColor(colorIndex, color)
-                name = colorNode.GetColorName(colorIndex)
-                segment = slicer.vtkSegment()
-                segment.SetColor(color[:3])
-                segment.SetName(name)
-                self.segmentationNode.GetSegmentation().AddSegment(segment)
-            slicer.util.saveNode(self.segmentationNode, self.segmentationPath)
 
         editorWidget.parameterSetNode.SetAndObserveSegmentationNode(self.segmentationNode)
         editorWidget.parameterSetNode.SetAndObserveSourceVolumeNode(volumeNode)
@@ -679,7 +668,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         sourceFilePath = f"{repoDir}/{sourceFileName}.nrrd"
         slicer.util.saveNode(sourceVolume, sourceFilePath)
         colorTableName = colorTable.GetName()
-        slicer.util.saveNode(colorTable, f"{repoDir}/{colorTableName}.ctbl")
+        slicer.util.saveNode(colorTable, f"{repoDir}/{colorTableName}.csv")
 
         # write accessionData file
         fp = open(f"{repoDir}/MorphoDepotAccession.json", "w")

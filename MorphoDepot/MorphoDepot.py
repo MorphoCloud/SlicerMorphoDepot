@@ -506,17 +506,18 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
         self.ghProgressMethod(f"Loading {branchName} into {localDirectory}")
 
-        # TODO: move from single volume and color table file to segmentation specification json
         colorPath = glob.glob(f"{localDirectory}/*.csv")[0]
         colorNode = slicer.util.loadColorTable(colorPath)
 
         # TODO: move from single volume file to segmentation specification json
-        volumePath = f"{self.localRepo.working_dir}/source_volume"
+        # TODO: save checksum in source_volume file to verify when downloading later
+        volumePath = f"{localDirectory}/source_volume"
         if not os.path.exists(volumePath):
-            volumePath = f"{self.localRepo.working_dir}/master_volume" # for backwards compatibility
+            volumePath = f"{localDirectory}/master_volume" # for backwards compatibility
         volumeURL = open(volumePath).read().strip()
-        nrrdPath = f"{slicer.app.temporaryPath}/{upstreamNameWithOwner.replace('/', '-')}-volume.nrrd"
-        slicer.util.downloadFile(volumeURL, nrrdPath)
+        nrrdPath = f"{localDirectory}/{upstreamNameWithOwner.replace('/', '-')}-volume.nrrd"
+        if not os.path.exists(nrrdPath):
+            slicer.util.downloadFile(volumeURL, nrrdPath)
         volumeNode = slicer.util.loadVolume(nrrdPath)
 
         # Load all segmentations

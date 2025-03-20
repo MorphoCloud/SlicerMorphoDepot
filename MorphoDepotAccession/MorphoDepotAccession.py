@@ -37,7 +37,7 @@ and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR0132
 # MorphoDepotAccessionWidget
 #
 
-class MorphoDepotAccessionWidget(ScriptedLoadableModuleWidget):
+class MorphoDepotAccessionWidget(ScriptedLoadableModuleWidget, MorphoDepot.EnableModuleMixin):
     """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
@@ -100,16 +100,10 @@ class MorphoDepotAccessionWidget(ScriptedLoadableModuleWidget):
         self.ui.openRepository.clicked.connect(self.onOpenRepository)
         self.ui.clearForm.clicked.connect(self.onClearForm)
 
-
     def enter(self):
-        if not self.logic.git:
-            MorphoDepot.MorphoDepotWidget.offerInstallation()
-        if self.logic.git:
-            self.ui.inputsCollapsibleButton.enabled = True
-            self.ui.accessionCollapsibleButton.enabled = True
-        else:
-            self.ui.inputsCollapsibleButton.enabled = False
-            self.ui.accessionCollapsibleButton.enabled = False
+        moduleEnabled = self.checkModuleEnabled()
+        self.ui.inputsCollapsibleButton.enabled = moduleEnabled
+        self.ui.accessionCollapsibleButton.enabled = moduleEnabled
 
     def onCreateRepository(self):
         if self.ui.inputSelector.currentNode() == None or self.colorSelector.currentNode() == None:

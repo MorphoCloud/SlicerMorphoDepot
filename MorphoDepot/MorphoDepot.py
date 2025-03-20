@@ -55,8 +55,41 @@ and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR0132
 # MorphoDepotWidget
 #
 
+class EnableModuleMixin:
+    """A superclass to check that everything is correct before enabling the module.  """
 
-class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
+    def __init__(self):
+        pass
+
+
+    def offerInstallation(self):
+        msg = "Extra tools are needed to use this module (pixi, git, and gh)."
+        msg += "  Click OK to install them in this module."
+        install = slicer.util.confirmOkCancelDisplay(msg)
+        if install:
+            logic = MorphoDepotLogic(ghProgressMethod=MorphoDepotWidget.ghProgressMethod)
+            try:
+                logic.installDependencies()
+            except Exception as e:
+                msg = "Installation failed.  Check error log for debugging information."
+                slicer.util.messageBox(msg)
+                print(f"Exception: {e}")
+                traceback.print_exc(file=sys.stderr)
+            return logic.ghPath
+
+    def checkModuleEnabled(self):
+        moduleEnabled = True
+        if not self.logic.slicerVersionCheck():
+            msg = "This version of Slicer is not supported. Use a newer Preview or a Release after 5.8."
+            slicer.util.messageBox(msg)
+            moduleEnabled = False
+        if moduleEnabled and not self.logic.git:
+            self.offerInstallation()
+        moduleEnabled = moduleEnabled and (self.logic.git is not None)
+        return moduleEnabled
+
+
+class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, EnableModuleMixin):
     """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
@@ -69,18 +102,6 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.issuesByItem = {}
         self.prsByItem = {}
 
-    @staticmethod
-    def offerInstallation():
-        install = slicer.util.confirmOkCancelDisplay("Extra tools are needed to use this module (pixi, git, and gh).  Click OK to install them in this module.")
-        if install:
-            logic = MorphoDepotLogic(ghProgressMethod=MorphoDepotWidget.ghProgressMethod)
-            try:
-                logic.installDependencies()
-            except Exception as e:
-                slicer.util.messageBox("Installation failed.  Check error log for debugging information.")
-                print(f"Exception: {e}")
-                traceback.print_exc(file=sys.stderr)
-            return logic.ghPath
 
     def ghProgressMethod(self, message):
         logging.info(message)
@@ -112,7 +133,6 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         repoDir = self.logic.localRepositoryDirectory()
         self.ui.repoDirectory.currentPath = repoDir
 
-
         self.ui.forkManagementCollapsibleButton.enabled = False
 
         # Connections
@@ -124,22 +144,15 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
         self.ui.repoDirectory.connect("currentPathChanged(QString)", self.onRepoDirectoryChanged)
         self.ui.openPRPageButton.clicked.connect(self.onOpenPRPageButtonClicked)
 
-
     def cleanup(self) -> None:
         """Called when the application closes and the module widget is destroyed."""
         self.removeObservers()
 
     def enter(self):
-        if not self.logic.git:
-            self.offerInstallation()
-        if self.logic.git:
-            self.ui.issuesCollapsibleButton.enabled = True
-            self.ui.prCollapsibleButton.enabled = True
-            self.ui.refreshButton.enabled = True
-        else:
-            self.ui.issuesCollapsibleButton.enabled = False
-            self.ui.prCollapsibleButton.enabled = False
-            self.ui.refreshButton.enabled = False
+        moduleEnabled = self.checkModuleEnabled()
+        self.ui.issuesCollapsibleButton.enabled = moduleEnabled
+        self.ui.prCollapsibleButton.enabled = moduleEnabled
+        self.ui.refreshButton.enabled = moduleEnabled
 
     def onRefresh(self):
         self.updateIssueList()
@@ -291,6 +304,9 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         git.refresh(path=self.gitPath)
         self.git = git
         del os.environ['GIT_PYTHON_GIT_EXECUTABLE']
+
+    def slicerVersionCheck(self):
+        return hasattr(slicer.vtkSegment, "SetTerminology")
 
     def localRepositoryDirectory(self):
         repoDirectory = slicer.util.settingsValue("MorphoDepot/repoDirectory", "")

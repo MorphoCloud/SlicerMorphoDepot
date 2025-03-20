@@ -54,7 +54,7 @@ and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR0132
 #
 
 
-class MorphoDepotReviewWidget(ScriptedLoadableModuleWidget, VTKObservationMixin):
+class MorphoDepotReviewWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, MorphoDepot.EnableModuleMixin):
     """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
@@ -94,16 +94,10 @@ class MorphoDepotReviewWidget(ScriptedLoadableModuleWidget, VTKObservationMixin)
         self.ui.approveButton.clicked.connect(self.onApprove)
 
     def enter(self):
-        if not self.logic.git:
-            MorphoDepot.MorphoDepotWidget.offerInstallation()
-        if self.logic.git:
-            self.ui.prCollapsibleButton.enabled = True
-            self.ui.prsCollapsibleButton.enabled = True
-            self.ui.refreshButton.enabled = True
-        else:
-            self.ui.prCollapsibleButton.enabled = False
-            self.ui.prsCollapsibleButton.enabled = False
-            self.ui.refreshButton.enabled = False
+        moduleEnabled = self.checkModuleEnabled()
+        self.ui.prCollapsibleButton.enabled = moduleEnabled
+        self.ui.prsCollapsibleButton.enabled = moduleEnabled
+        self.ui.refreshButton.enabled = moduleEnabled
 
     def updatePRList(self):
         slicer.util.showStatusMessage(f"Updating PRs")

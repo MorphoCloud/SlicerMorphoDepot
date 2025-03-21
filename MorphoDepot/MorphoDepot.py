@@ -716,7 +716,7 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
         repo.index.add([f"{repoDir}/README.md",
                         f"{repoDir}/LICENSE.txt",
                         f"{repoDir}/MorphoDepotAccession.json",
-                        f"{repoDir}/{colorTableName}.ctbl",
+                        f"{repoDir}/{colorTableName}.csv",
         ])
         repo.index.commit("Initial commit")
 

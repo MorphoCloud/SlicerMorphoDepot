@@ -83,7 +83,7 @@ class EnableModuleMixin:
             msg = "This version of Slicer is not supported. Use a newer Preview or a Release after 5.8."
             slicer.util.messageBox(msg)
             moduleEnabled = False
-        if moduleEnabled and not self.logic.git:
+        if moduleEnabled and (not self.logic.git or not self.logic.gitPath or not self.logic.ghPath):
             self.offerInstallation()
         moduleEnabled = moduleEnabled and (self.logic.git is not None)
         return moduleEnabled

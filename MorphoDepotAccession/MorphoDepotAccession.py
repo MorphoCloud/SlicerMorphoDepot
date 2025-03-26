@@ -55,22 +55,6 @@ class MorphoDepotAccessionWidget(ScriptedLoadableModuleWidget, MorphoDepot.Enabl
         ghProgressMethod = lambda message : MorphoDepot.MorphoDepotWidget.ghProgressMethod(None, message)
         self.logic = MorphoDepot.MorphoDepotLogic(ghProgressMethod)
 
-        try:
-            import pygbif
-        except ModuleNotFoundError:
-            slicer.util.messageBox("The pygbif package is required.  Installation may take a minute.")
-            slicer.util.showStatusMessage("Installing pygbif package...")
-            slicer.util.pip_install("pygbif")
-            import pygbif
-
-        try:
-            import idigbio
-        except ModuleNotFoundError:
-            slicer.util.messageBox("The idigbio package is required.  Installation may take a minute.")
-            slicer.util.showStatusMessage("Installing idigbio package...")
-            slicer.util.pip_install("idigbio")
-            import idigbio
-
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
         uiWidget = slicer.util.loadUI(self.resourcePath("UI/MorphoDepotAccession.ui"))

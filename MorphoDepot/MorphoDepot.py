@@ -61,21 +61,29 @@ class EnableModuleMixin:
     def __init__(self):
         pass
 
+    def promptForGitConfig(self):
+        # TODO
+        return ("Sample Name", "name@example.com")
 
     def offerInstallation(self):
-        msg = "Extra tools are needed to use this module (pixi, git, and gh)."
-        msg += "  Click OK to install them in this module."
+        msg = "Extra tools are needed to use this module (pixi, git, and gh),"
+        msg += "\nplus some python packages (idigbio and pygbif)."
+        msg += "\nClick OK to install them for MorphoDepot."
         install = slicer.util.confirmOkCancelDisplay(msg)
         if install:
-            logic = MorphoDepotLogic(ghProgressMethod=MorphoDepotWidget.ghProgressMethod)
-            try:
-                logic.installDependencies()
-            except Exception as e:
-                msg = "Installation failed.  Check error log for debugging information."
-                slicer.util.messageBox(msg)
-                print(f"Exception: {e}")
-                traceback.print_exc(file=sys.stderr)
-            return logic.ghPath
+            installPythonDependencies()
+            if not self.usingSystemGit:
+                name,email = self.promptForGitConfig()
+                logic = MorphoDepotLogic(ghProgressMethod=MorphoDepotWidget.ghProgressMethod)
+                try:
+                    logic.installDependencies(name, email)
+                    self.enter()
+                except Exception as e:
+                    msg = "Installation failed.  Check error log for debugging information."
+                    slicer.util.messageBox(msg)
+                    print(f"Exception: {e}")
+                    traceback.print_exc(file=sys.stderr)
+        return logic.ghPath
 
     def checkModuleEnabled(self):
         moduleEnabled = True
@@ -83,8 +91,8 @@ class EnableModuleMixin:
             msg = "This version of Slicer is not supported. Use a newer Preview or a Release after 5.8."
             slicer.util.messageBox(msg)
             moduleEnabled = False
-        if moduleEnabled and (not self.logic.git or not self.logic.gitPath or not self.logic.ghPath):
-            self.offerInstallation()
+        if not (moduleEnabled and self.logic.git and self.logic.gitPath and self.logic.ghPath):
+            moduleEnabled = moduleEnabled and self.offerInstallation()
         moduleEnabled = moduleEnabled and (self.logic.git is not None)
         return moduleEnabled
 
@@ -103,7 +111,8 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.prsByItem = {}
 
 
-    def ghProgressMethod(self, message):
+    def ghProgressMethod(self, message=None):
+        message = message if message else self
         logging.info(message)
         slicer.util.showStatusMessage(message)
         slicer.app.processEvents(qt.QEventLoop.ExcludeUserInputEvents)
@@ -248,6 +257,30 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
 # MorphoDepotLogic
 #
 
+def gitEnvironmentDecorator(func):
+    """
+    Decorator that temporarily configures the enviornment for methods that use GitPython
+    For use inside MorphoDepotLogic.
+    """
+    @contextmanager
+    def tempHome(self):
+        oldHOME = os.environ.get('HOME')
+        try:
+            if not self.usingSystemGit:
+                os.environ['HOME'] = self.pixiInstallDir
+            yield
+        finally:
+            if oldHOME is not None:
+                os.environ['HOME'] = oldHOME
+            else:
+                del os.environ['HOME']
+
+    def wrapper(*args, **kwargs):
+        with tempHome(args[0]):
+            return func(*args, **kwargs)
+
+    return wrapper
+
 
 class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     """This class should implement all the actual
@@ -267,28 +300,31 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.localRepo = None
         self.ghProgressMethod = ghProgressMethod if ghProgressMethod else lambda *args : None
 
-        # define where we expect to find git and gh after installation
         self.executableExtension = '.exe' if os.name == 'nt' else ''
         modulePath = os.path.split(slicer.modules.morphodepot.path)[0]
         self.resourcesPath = modulePath + "/Resources"
+        self.pixiInstallDir = self.resourcesPath + "/pixi"
 
-        # check if git and gh are in the path and use those if they are
-        gitPath = shutil.which("git")
-        ghPath = shutil.which("gh")
-        if gitPath:
-            self.gitPath = gitPath
+        # use system installed git and gh if available
+        import shutil
+        systemGitPath = shutil.which("git")
+        systemGhPath = shutil.which("gh")
+        if systemGitPath and systemGhPath:
+            self.gitExecutablesDir = os.path.dirname(systemGitPath)
+            self.gitPath = systemGitPath
+            self.ghPath = systemGhPath
+            self.usingSystemGit = True
         else:
+            # otherwiss define where we expect to find git and gh after installation
             if os.name == 'nt':
-                self.gitPath = self.resourcesPath + "/pixi/.pixi/envs/default/Library/bin/git.exe"
+                self.gitExecutablesDir = self.pixiInstallDir + "/.pixi/envs/default/Library/bin"
+                self.gitPath = self.gitExecutablesDir + "/git.exe"
+                self.ghPath = self.pixiInstallDir + "/.pixi/envs/default/Scripts/gh.exe"
             else:
-                self.gitPath = self.resourcesPath + "/pixi/.pixi/envs/default/bin/git"
-        if ghPath:
-            self.ghPath = ghPath
-        else:
-            if os.name == 'nt':
-                self.ghPath = self.resourcesPath + "/pixi/.pixi/envs/default/Scripts/gh.exe"
-            else:
-                self.ghPath = self.resourcesPath + "/pixi/.pixi/envs/default/bin/gh"
+                self.gitExecutablesDir = self.pixiInstallDir + "/.pixi/envs/default/bin"
+                self.gitPath = self.gitExecutablesDir + "/git"
+                self.ghPath = self.pixiInstallDir + "/.pixi/envs/default/bin/gh"
+            self.usingSystemGit = False
 
         self.git = None
         if os.path.exists(self.gitPath):
@@ -319,56 +355,87 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     def setLocalRepositoryDirectory(self, repoDir):
         qt.QSettings().setValue("MorphoDepot/repoDirectory", repoDir)
 
-    def installDependencies(self):
+    def installPythonDependencies(self):
+        """Install pygbif and idigbio if needed
+        """
+        try:
+            import pygbif
+        except ModuleNotFoundError:
+            self.ghProgressMethod(f"Installing pygbif")
+            slicer.util.pip_install("pygbif")
+            import pygbif
+
+        try:
+            import idigbio
+        except ModuleNotFoundError:
+            self.ghProgressMethod(f"Installing idigbio")
+            slicer.util.pip_install("idigbio")
+            import idigbio
+
+
+    @gitEnvironmentDecorator
+    def installGitDependencies(self, name, email):
         """Install pixi, git, and gh in our resources to be used here.
+        Requires name and email to configure git
         Returns path to gh
         """
+
+        if self.usingSystemGit:
+            return
+
+        os.makedirs(self.pixiInstallDir, exist_ok=True)
+
         if os.name == 'nt':
             fileName = 'install.ps1'
         else:
             fileName = 'install.sh'
 
-        logging.info("Downloading pixi")
+        self.ghProgressMethod("Downloading pixi")
         url = f'https://pixi.sh/{fileName}'
-        scriptPath = self.resourcesPath + "/" + fileName
+        scriptPath = self.pixiInstallDir + "/" + fileName
         slicer.util.downloadFile(url, scriptPath)
 
-        pixiInstallDir = self.resourcesPath + "/pixi"
-        os.makedirs(pixiInstallDir, exist_ok=True)
-
-        logging.info("Running pixi installer")
+        self.ghProgressMethod("Running pixi installer")
         updateEnvironment = {}
         if os.name == 'nt':
             command = ["powershell.exe",
                         "-ExecutionPolicy", "Bypass",
                         "-File", scriptPath ,
-                        "-PixiHome", pixiInstallDir, "-NoPathUpdate"]
+                        "-PixiHome", self.pixiInstallDir, "-NoPathUpdate"]
         else:
-            updateEnvironment['PIXI_HOME'] = pixiInstallDir
+            updateEnvironment['PIXI_HOME'] = self.pixiInstallDir
             updateEnvironment['PIXI_NO_PATH_UPDATE'] = "1"
+            updateEnvironment['DBUS_SESSION_BUS_ADDRESS'] = "" ;# bug on jetstream2 linux
             command = ["/bin/bash", scriptPath]
 
         p = slicer.util.launchConsoleProcess(command, updateEnvironment=updateEnvironment)
         logging.info(str(p.communicate()))
 
-        pixiPath = pixiInstallDir + "/bin/pixi" + self.executableExtension
-        p = slicer.util.launchConsoleProcess([pixiPath, "init", pixiInstallDir])
+        pixiPath = self.pixiInstallDir + "/bin/pixi" + self.executableExtension
+        p = slicer.util.launchConsoleProcess([pixiPath, "init", self.pixiInstallDir], updateEnvironment=updateEnvironment)
         logging.info(str(p.communicate()))
-        print("Adding git")
-        p = slicer.util.launchConsoleProcess([pixiPath, "add", "--manifest-path", pixiInstallDir, "git"])
+        self.ghProgressMethod("Adding git")
+        p = slicer.util.launchConsoleProcess([pixiPath, "add", "--manifest-path", self.pixiInstallDir, "git"], updateEnvironment=updateEnvironment)
         logging.info(str(p.communicate()))
-        print("Adding gh")
-        p = slicer.util.launchConsoleProcess([pixiPath, "add", "--manifest-path", pixiInstallDir, "gh"])
+        self.ghProgressMethod("Adding gh")
+        p = slicer.util.launchConsoleProcess([pixiPath, "add", "--manifest-path", self.pixiInstallDir, "gh"], updateEnvironment=updateEnvironment)
         logging.info(str(p.communicate()))
 
-        self.gitPath = pixiInstallDir + "/.pixi/envs/default/bin/git" + self.executableExtension
-        self.ghPath = pixiInstallDir + "/.pixi/envs/default/bin/gh" + self.executableExtension
-
-        print("Importing GitPython")
+        self.ghProgressMethod("Importing GitPython")
         self.importGitPython()
 
-        print("Installation complete")
+        tempRepoDir = slicer.app.temporaryPath + "/_MorphoDepot_temp_git"
+        import shutil
+        shutil.rmtree(tempRepoDir, ignore_errors=True)
+        os.makedirs(tempRepoDir)
+        tempRepo = self.git.Repo.init(tempRepoDir)
+        tempRepo.config_writer(config_level="global").set_value("user", "name", name).release()
+        tempRepo.config_writer(config_level="global").set_value("user", "email", email).release()
+        shutil.rmtree(tempRepoDir)
 
+        self.ghProgressMethod("Installation complete")
+
+    @gitEnvironmentDecorator
     def gh(self, command):
         """Execute `gh` command.  Multiline input string accepted for readablity.
         Do not include `gh` in the command string"""
@@ -383,7 +450,15 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             logging.error("command must be string or list")
         self.ghProgressMethod(" ".join(commandList))
         fullCommandList = [self.ghPath] + commandList
-        process = slicer.util.launchConsoleProcess(fullCommandList)
+        if self.usingSystemGit:
+            environment = {}
+        else:
+            environment = {
+                "PATH" : self.gitExecutablesDir,
+                "GIT_EXEC_PATH" : self.gitExecutablesDir,
+                "GH_CONFIG_DIR" : self.pixiInstallDir
+            }
+        process = slicer.util.launchConsoleProcess(fullCommandList, updateEnvironment=environment)
         result = process.communicate()
         if process.returncode != 0:
             logging.error("gh command failed:")
@@ -439,6 +514,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         repositoryList = [r['name'] for r in repositories]
         return repositoryList
 
+    @gitEnvironmentDecorator
     def loadIssue(self, issue, repoDirectory):
         self.ghProgressMethod(f"Loading issue {issue} into {repoDirectory}")
         issueNumber = issue['number']
@@ -452,6 +528,10 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 self.gh(f"repo fork {sourceRepository} --remote=true --clone=false")
             self.gh(f"repo clone {repositoryName} {localDirectory}")
         self.localRepo = self.git.Repo(localDirectory)
+        if not "upstream" in self.localRepo.remotes:
+            # no upstream, so this is an issue assigned to the owner of the repo
+            self.localRepo.create_remote("upstream", list(self.localRepo.remotes[0].urls)[0])
+
         originBranches = self.localRepo.remotes.origin.fetch()
         originBranchIDs = [ob.name for ob in originBranches]
         originBranchID = f"origin/{branchName}"
@@ -478,6 +558,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
         self.loadFromLocalRepository()
 
+    @gitEnvironmentDecorator
     def loadPR(self, pr, repoDirectory):
         branchName = pr['title']
         repositoryName = f"{pr['headRepositoryOwner']['login']}/{pr['headRepository']['name']}"
@@ -658,6 +739,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         commandList += ["--body", "Merging and closing"]
         self.gh(commandList)
 
+    @gitEnvironmentDecorator
     def createAccessionRepo(self, sourceVolume, colorTable, accessionData):
 
         repoName = accessionData['githubRepoName'][1]

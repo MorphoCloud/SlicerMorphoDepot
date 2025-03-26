@@ -297,7 +297,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     def importGitPython(self):
         # gitpython cannot be imported if it can't find git.
         # we specify the executable but also set it explicitly so that
-        # we know we are using out download in case it has already been
+        # we know we are using our download in case it has already been
         # imported elsewhere and found a different git
         os.environ['GIT_PYTHON_GIT_EXECUTABLE'] = self.gitPath
         import git

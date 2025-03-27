@@ -514,6 +514,12 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         return repositoryList
 
     @gitEnvironmentDecorator
+    def ensureUpstreamExists(self)
+        if not "upstream" in self.localRepo.remotes:
+            # no upstream, so this is an issue assigned to the owner of the repo
+            self.localRepo.create_remote("upstream", list(self.localRepo.remotes[0].urls)[0])
+
+    @gitEnvironmentDecorator
     def loadIssue(self, issue, repoDirectory):
         self.ghProgressMethod(f"Loading issue {issue} into {repoDirectory}")
         issueNumber = issue['number']
@@ -527,9 +533,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 self.gh(f"repo fork {sourceRepository} --remote=true --clone=false")
             self.gh(f"repo clone {repositoryName} {localDirectory}")
         self.localRepo = self.git.Repo(localDirectory)
-        if not "upstream" in self.localRepo.remotes:
-            # no upstream, so this is an issue assigned to the owner of the repo
-            self.localRepo.create_remote("upstream", list(self.localRepo.remotes[0].urls)[0])
+        self.ensureUpstreamExists()
 
         originBranches = self.localRepo.remotes.origin.fetch()
         originBranchIDs = [ob.name for ob in originBranches]
@@ -567,6 +571,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         if not os.path.exists(localDirectory):
             self.gh(f"repo clone {repositoryName} {localDirectory}")
         self.localRepo = self.git.Repo(localDirectory)
+        self.ensureUpstreamExists()
         self.localRepo.remotes.origin.fetch()
         self.localRepo.git.checkout(branchName)
         self.localRepo.remotes.origin.pull()

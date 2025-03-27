@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 import glob
 import json
 import logging
@@ -20,8 +21,6 @@ from slicer.parameterNodeWrapper import (
     parameterNodeWrapper,
     WithinRange,
 )
-
-from slicer import vtkMRMLScalarVolumeNode
 
 
 #
@@ -861,3 +860,4 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
         self.delayDisplay("Starting the test")
 
         self.delayDisplay("Test passed")
+

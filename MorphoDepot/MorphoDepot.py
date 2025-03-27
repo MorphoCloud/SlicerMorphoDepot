@@ -514,7 +514,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         return repositoryList
 
     @gitEnvironmentDecorator
-    def ensureUpstreamExists(self)
+    def ensureUpstreamExists(self):
         if not "upstream" in self.localRepo.remotes:
             # no upstream, so this is an issue assigned to the owner of the repo
             self.localRepo.create_remote("upstream", list(self.localRepo.remotes[0].urls)[0])

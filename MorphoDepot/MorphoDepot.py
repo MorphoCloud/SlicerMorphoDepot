@@ -72,7 +72,7 @@ class EnableModuleMixin:
         if install:
             logic = MorphoDepotLogic(ghProgressMethod=MorphoDepotWidget.ghProgressMethod)
             logic.installPythonDependencies()
-            if not self.usingSystemGit:
+            if not logic.usingSystemGit:
                 name,email = self.promptForGitConfig()
                 try:
                     logic.installGitDependencies(name, email)

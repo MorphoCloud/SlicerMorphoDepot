@@ -70,12 +70,12 @@ class EnableModuleMixin:
         msg += "\nClick OK to install them for MorphoDepot."
         install = slicer.util.confirmOkCancelDisplay(msg)
         if install:
-            installPythonDependencies()
+            logic = MorphoDepotLogic(ghProgressMethod=MorphoDepotWidget.ghProgressMethod)
+            logic.installPythonDependencies()
             if not self.usingSystemGit:
                 name,email = self.promptForGitConfig()
-                logic = MorphoDepotLogic(ghProgressMethod=MorphoDepotWidget.ghProgressMethod)
                 try:
-                    logic.installDependencies(name, email)
+                    logic.installGitDependencies(name, email)
                     self.enter()
                 except Exception as e:
                     msg = "Installation failed.  Check error log for debugging information."

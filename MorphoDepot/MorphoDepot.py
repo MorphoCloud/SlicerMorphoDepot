@@ -272,7 +272,10 @@ def gitEnvironmentDecorator(func):
             if oldHOME is not None:
                 os.environ['HOME'] = oldHOME
             else:
-                del os.environ['HOME']
+                try:
+                    del os.environ['HOME']
+                except KeyError:
+                    pass
 
     def wrapper(*args, **kwargs):
         with tempHome(args[0]):

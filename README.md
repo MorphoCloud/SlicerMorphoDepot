@@ -18,10 +18,11 @@ The Slicer extension uses git behind the scenes, but most of the project managem
 ## Prerequisites for MorphoDepot
 (First two steps are not required if you are planning to use [MorphoCloud On Demand Instances](https://instances.morpho.cloud), which we highly encourage you to do so.)
 
-1. Install [git command line tools for your operating system](https://git-scm.com/downloads). Make a note of the path you have installed git. You will need this information. 
-2. Install [GitHub CLI for your operating system.](https://cli.github.com/). Make a note of the path you have installed gh. You will need this information.
-3. Register an account on GitHub.com if you don't already have one. ([Note that GH now requires 2FA](https://docs.github.com/en/authentication/securing-your-account-with-two-factor-authentication-2fa/configuring-two-factor-authentication). For 2FA, we suggest using GitHub's mobile app).
-4. Login to GitHub from the **terminal window** of your OS by giving this command: `gh auth login`. Make sure you follow the instructions all the way through, which involves the user pasting and 8-digit code (XXXX-YYYY) into the browser window, and authorizing GitHub. Make sure you have seen **"Congratulations, you're all set!"**, in your browser window (if not, you need to repeat the steps).
+1. Install [git command line tools for your operating system](https://git-scm.com/downloads). Make a note of the path you have installed git. You will need this information.
+   * Most recent MacOS computers do come with git preinstalled. To check, open a terminal window and type `which git`. If this query doesn't return anything, you do not have git installed. 
+3. Install [GitHub CLI for your operating system.](https://cli.github.com/). Make a note of the path you have installed gh. You will need this information.
+4. Register an account on GitHub.com if you don't already have one. ([Note that GH now requires 2FA](https://docs.github.com/en/authentication/securing-your-account-with-two-factor-authentication-2fa/configuring-two-factor-authentication). For 2FA, we suggest using GitHub's mobile app).
+5. Login to GitHub from the **terminal window** of your OS by giving this command: `gh auth login`. Make sure you follow the instructions all the way through, which involves the user pasting and 8-digit code (XXXX-YYYY) into the browser window, and authorizing GitHub. Make sure you have seen **"Congratulations, you're all set!"**, in your browser window (if not, you need to repeat the steps).
    * If you get an **"Command/file not found"** error, it means gh executable is not on your system path. You will need to provide the full path from step #2 as prefix to the command (e.g., `/Users/slicermorph/Desktop/gh-2.6/bin/gh auth login`)
 6. Install the MorphoDepot Slicer extension. 
 

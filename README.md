@@ -16,7 +16,10 @@ The Slicer extension uses git behind the scenes, but most of the project managem
 
 ![image](https://github.com/user-attachments/assets/9481ce0f-dc37-4900-9cdc-14bb0922df59)
 
-* **MorphoDepotAccession** module allows generating github repositories that can be accessed via MorphoDepot module. 
+* **MorphoDepotAccession** module allows generating github repositories that can be accessed via MorphoDepot module.
+
+<img width="550" alt="image" src="https://github.com/user-attachments/assets/7a19682f-3636-4909-aede-460c265c3e35" />
+
 
 ## Prerequisites for MorphoDepot
 (First two steps are not required if you are planning to use [MorphoCloud On Demand Instances](https://instances.morpho.cloud), which we highly encourage you to do so.)

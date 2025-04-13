@@ -27,11 +27,13 @@ from slicer.parameterNodeWrapper import (
 # MorphoDepot
 #
 
-
 class MorphoDepot(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
+
+    requireSystemGit = True # don't try to install using pixi
+                            # see https://github.com/MorphoCloud/SlicerMorphoDepot/issues/24
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
@@ -49,7 +51,6 @@ and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR0132
 """)
 
 
-
 #
 # MorphoDepotWidget
 #
@@ -58,14 +59,13 @@ class EnableModuleMixin:
     """A superclass to check that everything is correct before enabling the module.  """
 
     def __init__(self):
-        self.requireSystemGit = True # don't try to install using pixi
-                                     # see https://github.com/MorphoCloud/SlicerMorphoDepot/issues/24
+        pass
 
     def promptForGitConfig(self):
         # TODO - a prompting dialog would be required if requireSystemGit were False
         return ("Sample Name", "name@example.com")
 
-    def offerInstallation(self):
+    def offerGitInstallation(self):
         """Not currently used: reserve for future if git/gh install needs to be done by this module"""
         msg = "Extra tools are needed to use this module (pixi, git, and gh),"
         msg += "\nplus some python packages (idigbio and pygbif)."
@@ -108,7 +108,7 @@ class EnableModuleMixin:
             if not self.offerPythonInstallation():
                 return False
         moduleEnabled = True
-        if self.requireSystemGit:
+        if MorphoDepot.requireSystemGit:
             if not self.logic.checkGitDependencies():
                 msg = "The git and gh must be installed and configured."
                 msg += "\nSee documentation for platform-specific instructions"
@@ -116,7 +116,7 @@ class EnableModuleMixin:
                 return False
         else:
             if not (moduleEnabled and self.logic.git and self.logic.gitPath and self.logic.ghPath):
-                moduleEnabled = moduleEnabled and self.offerInstallation()
+                moduleEnabled = moduleEnabled and self.offerGitInstallation()
         moduleEnabled = moduleEnabled and (self.logic.git is not None)
         return moduleEnabled
 
@@ -130,7 +130,6 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         """Called when the user opens the module the first time and the widget is initialized."""
         ScriptedLoadableModuleWidget.__init__(self, parent)
         VTKObservationMixin.__init__(self)  # needed for parameter node observation
-        EnableModuleMixin.__init__(self)  # needed for requireSystemGit
         self.logic = None
         self.issuesByItem = {}
         self.prsByItem = {}
@@ -140,6 +139,9 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         logging.info(message)
         slicer.util.showStatusMessage(message)
         slicer.app.processEvents(qt.QEventLoop.ExcludeUserInputEvents)
+
+    def setupLogic(self):
+        self.logic = MorphoDepotLogic(ghProgressMethod=self.ghProgressMethod)
 
     def setup(self) -> None:
         """Called when the user opens the module the first time and the widget is initialized."""
@@ -156,15 +158,18 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         # "setMRMLScene(vtkMRMLScene*)" slot.
         uiWidget.setMRMLScene(slicer.mrmlScene)
 
-        # Create logic class. Logic implements all computations that should be possible to run
-        # in batch mode, without a graphical user interface.
-        self.logic = MorphoDepotLogic(ghProgressMethod=self.ghProgressMethod)
+        self.setupLogic()
 
         # only allow picking directories (bitwise AND NOT file filter bit)
         self.ui.repoDirectory.filters = self.ui.repoDirectory.filters & ~self.ui.repoDirectory.Files
 
         repoDir = self.logic.localRepositoryDirectory()
         self.ui.repoDirectory.currentPath = repoDir
+
+        self.ui.gitPath.currentPath = self.logic.gitPath
+        self.ui.gitPath.toolTip = "Restart Slicer after setting new path"
+        self.ui.ghPath.currentPath = self.logic.ghPath
+        self.ui.ghPath.toolTip = "Restart Slicer after setting new path"
 
         self.ui.forkManagementCollapsibleButton.enabled = False
 
@@ -175,6 +180,8 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.ui.reviewButton.clicked.connect(self.onRequestReview)
         self.ui.refreshButton.connect("clicked(bool)", self.onRefresh)
         self.ui.repoDirectory.connect("currentPathChanged(QString)", self.onRepoDirectoryChanged)
+        self.ui.gitPath.connect("currentPathChanged(QString)", self.onGitPathChanged)
+        self.ui.ghPath.connect("currentPathChanged(QString)", self.onGhPathChanged)
         self.ui.openPRPageButton.clicked.connect(self.onOpenPRPageButtonClicked)
 
     def cleanup(self) -> None:
@@ -276,6 +283,14 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
     def onRepoDirectoryChanged(self):
         self.logic.setLocalRepositoryDirectory(self.ui.repoDirectory.currentPath)
 
+    def onGitPathChanged(self):
+        qt.QSettings().setValue("MorphoDepot/gitPath", self.ui.gitPath.currentPath)
+        self.setupLogic()
+
+    def onGhPathChanged(self):
+        qt.QSettings().setValue("MorphoDepot/ghPath", self.ui.ghPath.currentPath)
+        self.setupLogic()
+
 
 #
 # MorphoDepotLogic
@@ -326,32 +341,45 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.segmentationPath = ""
         self.localRepo = None
         self.ghProgressMethod = ghProgressMethod if ghProgressMethod else lambda *args : None
+        self.gitExecutablesDir = None
+        self.gitPath = None
+        self.ghPath = None
+        self.usingSystemGit = True
 
         self.executableExtension = '.exe' if os.name == 'nt' else ''
         modulePath = os.path.split(slicer.modules.morphodepot.path)[0]
         self.resourcesPath = modulePath + "/Resources"
         self.pixiInstallDir = self.resourcesPath + "/pixi"
 
-        # use system installed git and gh if available
-        import shutil
-        systemGitPath = shutil.which("git")
-        systemGhPath = shutil.which("gh")
-        if systemGitPath and systemGhPath:
-            self.gitExecutablesDir = os.path.dirname(systemGitPath)
-            self.gitPath = systemGitPath
-            self.ghPath = systemGhPath
-            self.usingSystemGit = True
+        # use configured git and gh paths if selected,
+        # else use system installed git and gh if available
+        # Optionally install with pixi, but only if requireSystemGit is False
+        gitPath = slicer.util.settingsValue("MorphoDepot/gitPath", "")
+        ghPath = slicer.util.settingsValue("MorphoDepot/ghPath", "")
+
+        if gitPath == "":
+            gitPath = shutil.which("git")
+        if ghPath == "":
+            ghPath = shutil.which("gh")
+        if gitPath and ghPath:
+            self.gitExecutablesDir = os.path.dirname(gitPath)
+            self.gitPath = gitPath
+            self.ghPath = ghPath
         else:
-            # otherwiss define where we expect to find git and gh after installation
-            if os.name == 'nt':
-                self.gitExecutablesDir = self.pixiInstallDir + "/.pixi/envs/default/Library/bin"
-                self.gitPath = self.gitExecutablesDir + "/git.exe"
-                self.ghPath = self.pixiInstallDir + "/.pixi/envs/default/Scripts/gh.exe"
-            else:
-                self.gitExecutablesDir = self.pixiInstallDir + "/.pixi/envs/default/bin"
-                self.gitPath = self.gitExecutablesDir + "/git"
-                self.ghPath = self.pixiInstallDir + "/.pixi/envs/default/bin/gh"
-            self.usingSystemGit = False
+            # otherwise define where we expect to find git and gh after installation
+            if not MorphoDepot.requireSystemGit:
+                if os.name == 'nt':
+                    self.gitExecutablesDir = self.pixiInstallDir + "/.pixi/envs/default/Library/bin"
+                    self.gitPath = self.gitExecutablesDir + "/git.exe"
+                    self.ghPath = self.pixiInstallDir + "/.pixi/envs/default/Scripts/gh.exe"
+                else:
+                    self.gitExecutablesDir = self.pixiInstallDir + "/.pixi/envs/default/bin"
+                    self.gitPath = self.gitExecutablesDir + "/git"
+                    self.ghPath = self.pixiInstallDir + "/.pixi/envs/default/bin/gh"
+                self.usingSystemGit = False
+
+        qt.QSettings().setValue("MorphoDepot/gitPath", self.gitPath)
+        qt.QSettings().setValue("MorphoDepot/ghPath", self.ghPath)
 
         self.git = None
         if os.path.exists(self.gitPath):
@@ -418,7 +446,6 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     def checkGitDependencies(self):
         """Check that git, and gh are available
         """
-        import shutil
         systemGitPath = shutil.which("git")
         systemGhPath = shutil.which("gh")
         if not (systemGitPath and systemGhPath):
@@ -492,7 +519,6 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.importGitPython()
 
         tempRepoDir = slicer.app.temporaryPath + "/_MorphoDepot_temp_git"
-        import shutil
         shutil.rmtree(tempRepoDir, ignore_errors=True)
         os.makedirs(tempRepoDir)
         tempRepo = self.git.Repo.init(tempRepoDir)

@@ -63,7 +63,6 @@ class MorphoDepotReviewWidget(ScriptedLoadableModuleWidget, VTKObservationMixin,
         """Called when the user opens the module the first time and the widget is initialized."""
         ScriptedLoadableModuleWidget.__init__(self, parent)
         VTKObservationMixin.__init__(self)  # needed for parameter node observation
-        MorphoDepot.EnableModuleMixin.__init__(self)  # needed for requireSystemGit
         self.logic = None
         self.prsByItem = {}
 

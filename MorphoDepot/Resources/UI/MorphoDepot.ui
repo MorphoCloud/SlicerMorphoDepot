@@ -25,16 +25,44 @@
      <property name="collapsed">
       <bool>false</bool>
      </property>
-     <layout class="QFormLayout" name="formLayout">
-      <item row="3" column="0">
+     <layout class="QVBoxLayout" name="verticalLayout_4">
+      <item>
        <widget class="QLabel" name="label_3">
         <property name="text">
          <string>Local repository directory</string>
         </property>
        </widget>
       </item>
-      <item row="4" column="0" colspan="2">
+      <item>
        <widget class="ctkPathLineEdit" name="repoDirectory">
+        <property name="sizeAdjustPolicy">
+         <enum>ctkPathLineEdit::AdjustToContents</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="gitlabel">
+        <property name="text">
+         <string>Path to git executable</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="ctkPathLineEdit" name="gitPath">
+        <property name="sizeAdjustPolicy">
+         <enum>ctkPathLineEdit::AdjustToContents</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="ghlabel">
+        <property name="text">
+         <string>Path to gh executable</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="ctkPathLineEdit" name="ghPath">
         <property name="sizeAdjustPolicy">
          <enum>ctkPathLineEdit::AdjustToContents</enum>
         </property>

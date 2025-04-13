@@ -422,6 +422,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         systemGitPath = shutil.which("git")
         systemGhPath = shutil.which("gh")
         if not (systemGitPath and systemGhPath):
+            self.ghProgressMethod(f"git path is {systemGitPath}")
+            self.ghProgressMethod(f"gh path is {systemGhPath}")
             return False
         import subprocess
         completedProcess = subprocess.run([systemGitPath, '--version'], capture_output=True, text=True)

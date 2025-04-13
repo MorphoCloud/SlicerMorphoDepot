@@ -11,7 +11,7 @@ The Slicer extension uses git behind the scenes, but most of the project managem
 |**MorphoDepot**|**MorphoDepotReview**|**MorphoDepotAccession**|
 |-----|-----|----|
 |lists pending issues assigned to this user and allows you to load/segment/commit them and then request review.|lists pending pull requests and allows the repository owner (PI) to accept edits or request changes.|allows generating github repositories that can be accessed via MorphoDepot module.|
-|----|-----|----|
+||||
 |<img src="https://github.com/user-attachments/assets/2d81e4f3-8d8b-49e4-97f4-f906053d375f" width="600">|<img src="https://github.com/user-attachments/assets/9481ce0f-dc37-4900-9cdc-14bb0922df59" width="600">|<img width="550" src="https://github.com/user-attachments/assets/7a19682f-3636-4909-aede-460c265c3e35">|
 
 

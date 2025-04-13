@@ -356,7 +356,6 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         # Optionally install with pixi, but only if requireSystemGit is False
         gitPath = slicer.util.settingsValue("MorphoDepot/gitPath", "")
         ghPath = slicer.util.settingsValue("MorphoDepot/ghPath", "")
-
         if gitPath == "":
             gitPath = shutil.which("git")
         if ghPath == "":
@@ -446,20 +445,19 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     def checkGitDependencies(self):
         """Check that git, and gh are available
         """
-        systemGitPath = shutil.which("git")
-        systemGhPath = shutil.which("gh")
-        if not (systemGitPath and systemGhPath):
-            self.ghProgressMethod(f"git path is {systemGitPath}")
-            self.ghProgressMethod(f"gh path is {systemGhPath}")
+        if not (os.path.exists(self.gitPath) and os.path.exists(self.ghPath)):
+            self.ghProgressMethod("bad git/gh paths")
+            self.ghProgressMethod(f"git path is {self.gitPath}")
+            self.ghProgressMethod(f"gh path is {self.ghPath}")
             return False
         import subprocess
-        completedProcess = subprocess.run([systemGitPath, '--version'], capture_output=True, text=True)
+        completedProcess = subprocess.run([self.gitPath, '--version'], capture_output=True, text=True)
         if completedProcess.returncode != 0:
             self.ghProgressMethod(f"git failed to run, returned {completedProcess.returncode}")
             self.ghProgressMethod(completedProcess.stdout)
             self.ghProgressMethod(completedProcess.stderr)
             return False
-        completedProcess = subprocess.run([systemGhPath, 'auth', 'status'], capture_output=True, text=True)
+        completedProcess = subprocess.run([self.ghPath, 'auth', 'status'], capture_output=True, text=True)
         if completedProcess.returncode != 0:
             self.ghProgressMethod(f"gh failed to run, returned {completedProcess.returncode}")
             self.ghProgressMethod(completedProcess.stdout)

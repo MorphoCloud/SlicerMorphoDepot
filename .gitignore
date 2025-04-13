@@ -34,3 +34,7 @@ Docs/_moduledescriptions
 # CLI module translation files
 Docs/_extraCLI/*_tr.h
 Modules/CLI/*/*_tr.h
+
+# pixi resources files
+MorphoDepot/Resources/install.sh
+MorphoDepot/Resources/pixi

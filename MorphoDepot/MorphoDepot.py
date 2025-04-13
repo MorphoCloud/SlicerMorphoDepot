@@ -111,7 +111,7 @@ class EnableModuleMixin:
         if self.requireSystemGit:
             if not self.logic.checkGitDependencies():
                 msg = "The git and gh must be installed and configured."
-                msg = "\nSee documentation for platform-specific instructions"
+                msg += "\nSee documentation for platform-specific instructions"
                 slicer.util.messageBox(msg)
                 return False
         else:
@@ -134,7 +134,6 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.logic = None
         self.issuesByItem = {}
         self.prsByItem = {}
-
 
     def ghProgressMethod(self, message=None):
         message = message if message else self

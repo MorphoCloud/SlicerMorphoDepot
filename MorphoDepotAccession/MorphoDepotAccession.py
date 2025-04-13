@@ -45,6 +45,7 @@ class MorphoDepotAccessionWidget(ScriptedLoadableModuleWidget, MorphoDepot.Enabl
     def __init__(self, parent=None) -> None:
         """Called when the user opens the module the first time and the widget is initialized."""
         ScriptedLoadableModuleWidget.__init__(self, parent)
+        MorphoDepot.EnableModuleMixin.__init__(self)  # needed for requireSystemGit
         self.logic = None
 
     def setup(self) -> None:

@@ -58,20 +58,21 @@ class EnableModuleMixin:
     """A superclass to check that everything is correct before enabling the module.  """
 
     def __init__(self):
-        pass
+        self.requireSystemGit = True # don't try to install using pixi
+                                     # see https://github.com/MorphoCloud/SlicerMorphoDepot/issues/24
 
     def promptForGitConfig(self):
-        # TODO
+        # TODO - a prompting dialog would be required if requireSystemGit were False
         return ("Sample Name", "name@example.com")
 
     def offerInstallation(self):
+        """Not currently used: reserve for future if git/gh install needs to be done by this module"""
         msg = "Extra tools are needed to use this module (pixi, git, and gh),"
         msg += "\nplus some python packages (idigbio and pygbif)."
         msg += "\nClick OK to install them for MorphoDepot."
         install = slicer.util.confirmOkCancelDisplay(msg)
         if install:
             logic = MorphoDepotLogic(ghProgressMethod=MorphoDepotWidget.ghProgressMethod)
-            logic.installPythonDependencies()
             if not logic.usingSystemGit:
                 name,email = self.promptForGitConfig()
                 try:
@@ -84,14 +85,38 @@ class EnableModuleMixin:
                     traceback.print_exc(file=sys.stderr)
         return logic.ghPath
 
+    def offerPythonInstallation(self):
+        msg = "Extra python packages (idigbio and pygbif) are required."
+        msg += "\nClick OK to install them for MorphoDepot."
+        install = slicer.util.confirmOkCancelDisplay(msg)
+        if install:
+            logic = MorphoDepotLogic(ghProgressMethod=MorphoDepotWidget.ghProgressMethod)
+            logic.installPythonDependencies()
+            msg = "Python package installation complete"
+            install = slicer.util.messageBox(msg)
+        return logic.checkPythonDependencies()
+
     def checkModuleEnabled(self):
-        moduleEnabled = True
+        """Module is only enabled if all of the dependencies are avaiable,
+        possibly after the user has accepted installation and it worked as expected
+        """
         if not self.logic.slicerVersionCheck():
             msg = "This version of Slicer is not supported. Use a newer Preview or a Release after 5.8."
             slicer.util.messageBox(msg)
-            moduleEnabled = False
-        if not (moduleEnabled and self.logic.git and self.logic.gitPath and self.logic.ghPath):
-            moduleEnabled = moduleEnabled and self.offerInstallation()
+            return False
+        if not self.logic.checkPythonDependencies():
+            if not self.offerPythonInstallation():
+                return False
+        moduleEnabled = True
+        if self.requireSystemGit:
+            if not self.logic.checkGitDependencies():
+                msg = "The git and gh must be installed and configured."
+                msg = "\nSee documentation for platform-specific instructions"
+                slicer.util.messageBox(msg)
+                return False
+        else:
+            if not (moduleEnabled and self.logic.git and self.logic.gitPath and self.logic.ghPath):
+                moduleEnabled = moduleEnabled and self.offerInstallation()
         moduleEnabled = moduleEnabled and (self.logic.git is not None)
         return moduleEnabled
 
@@ -105,6 +130,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         """Called when the user opens the module the first time and the widget is initialized."""
         ScriptedLoadableModuleWidget.__init__(self, parent)
         VTKObservationMixin.__init__(self)  # needed for parameter node observation
+        EnableModuleMixin.__init__(self)  # needed for requireSystemGit
         self.logic = None
         self.issuesByItem = {}
         self.prsByItem = {}
@@ -357,6 +383,22 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     def setLocalRepositoryDirectory(self, repoDir):
         qt.QSettings().setValue("MorphoDepot/repoDirectory", repoDir)
 
+    def checkPythonDependencies(self):
+        """See if pygbif and idigbio are available.
+        The GitPython package is installed by default in slicer.
+        """
+        try:
+            import pygbif
+        except ModuleNotFoundError:
+            return False
+
+        try:
+            import idigbio
+        except ModuleNotFoundError:
+            return False
+
+        return True
+
     def installPythonDependencies(self):
         """Install pygbif and idigbio if needed
         """
@@ -374,6 +416,28 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             slicer.util.pip_install("idigbio")
             import idigbio
 
+    def checkGitDependencies(self):
+        """Check that git, and gh are available
+        """
+        import shutil
+        systemGitPath = shutil.which("git")
+        systemGhPath = shutil.which("gh")
+        if not (systemGitPath and systemGhPath):
+            return False
+        import subprocess
+        completedProcess = subprocess.run([systemGitPath, '--version'], capture_output=True, text=True)
+        if completedProcess.returncode != 0:
+            self.ghProgressMethod(f"git failed to run, returned {completedProcess.returncode}")
+            self.ghProgressMethod(completedProcess.stdout)
+            self.ghProgressMethod(completedProcess.stderr)
+            return False
+        completedProcess = subprocess.run([systemGhPath, 'auth', 'status'], capture_output=True, text=True)
+        if completedProcess.returncode != 0:
+            self.ghProgressMethod(f"gh failed to run, returned {completedProcess.returncode}")
+            self.ghProgressMethod(completedProcess.stdout)
+            self.ghProgressMethod(completedProcess.stderr)
+            return False
+        return True
 
     @gitEnvironmentDecorator
     def installGitDependencies(self, name, email):

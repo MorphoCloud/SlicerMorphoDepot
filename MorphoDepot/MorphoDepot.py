@@ -179,9 +179,9 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.ui.commitButton.clicked.connect(self.onCommit)
         self.ui.reviewButton.clicked.connect(self.onRequestReview)
         self.ui.refreshButton.connect("clicked(bool)", self.onRefresh)
-        self.ui.repoDirectory.connect("currentPathChanged(QString)", self.onRepoDirectoryChanged)
-        self.ui.gitPath.connect("currentPathChanged(QString)", self.onGitPathChanged)
-        self.ui.ghPath.connect("currentPathChanged(QString)", self.onGhPathChanged)
+        self.ui.repoDirectory.comboBox().connect("currentTextChanged(QString)", self.onRepoDirectoryChanged)
+        self.ui.gitPath.comboBox().connect("currentTextChanged(QString)", self.onGitPathChanged)
+        self.ui.ghPath.comboBox().connect("currentTextChanged(QString)", self.onGhPathChanged)
         self.ui.openPRPageButton.clicked.connect(self.onOpenPRPageButtonClicked)
 
     def cleanup(self) -> None:
@@ -281,13 +281,16 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.updatePRList()
 
     def onRepoDirectoryChanged(self):
+        logging.info(f"Setting repoDirectory to be {self.ui.repoDirectory.currentPath}")
         self.logic.setLocalRepositoryDirectory(self.ui.repoDirectory.currentPath)
 
     def onGitPathChanged(self):
+        logging.info(f"Setting gitPath to be {self.ui.gitPath.currentPath}")
         qt.QSettings().setValue("MorphoDepot/gitPath", self.ui.gitPath.currentPath)
         self.setupLogic()
 
     def onGhPathChanged(self):
+        logging.info(f"Setting ghPath to be {self.ui.ghPath.currentPath}")
         qt.QSettings().setValue("MorphoDepot/ghPath", self.ui.ghPath.currentPath)
         self.setupLogic()
 

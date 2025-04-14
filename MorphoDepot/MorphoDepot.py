@@ -356,9 +356,9 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         # Optionally install with pixi, but only if requireSystemGit is False
         gitPath = slicer.util.settingsValue("MorphoDepot/gitPath", "")
         ghPath = slicer.util.settingsValue("MorphoDepot/ghPath", "")
-        if gitPath == "":
+        if not gitPath or gitPath == "":
             gitPath = shutil.which("git")
-        if ghPath == "":
+        if not ghPath or ghPath == "":
             ghPath = shutil.which("gh")
         if gitPath and ghPath:
             self.gitExecutablesDir = os.path.dirname(gitPath)

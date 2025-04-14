@@ -381,7 +381,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         qt.QSettings().setValue("MorphoDepot/ghPath", self.ghPath)
 
         self.git = None
-        if os.path.exists(self.gitPath):
+        if self.gitPath and os.path.exists(self.gitPath):
             self.importGitPython()
 
     def importGitPython(self):

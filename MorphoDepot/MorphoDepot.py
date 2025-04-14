@@ -445,6 +445,9 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     def checkGitDependencies(self):
         """Check that git, and gh are available
         """
+        if not (self.gitPath and self.ghPath):
+            self.ghProgressMethod("git/gh paths are not set")
+            return False
         if not (os.path.exists(self.gitPath) and os.path.exists(self.ghPath)):
             self.ghProgressMethod("bad git/gh paths")
             self.ghProgressMethod(f"git path is {self.gitPath}")
@@ -530,7 +533,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     def gh(self, command):
         """Execute `gh` command.  Multiline input string accepted for readablity.
         Do not include `gh` in the command string"""
-        if self.ghPath == "":
+        if not self.ghPath or self.ghPath == "":
             logging.error("Error, gh not found")
             return "Error, gh not found"
         if command.__class__() == "":

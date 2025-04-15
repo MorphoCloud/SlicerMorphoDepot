@@ -6,6 +6,7 @@ import os
 import shutil
 import platform
 import requests
+import subprocess
 import sys
 import traceback
 from typing import Annotated, Optional
@@ -445,6 +446,18 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             slicer.util.pip_install("idigbio")
             import idigbio
 
+    def checkCommand(self, command):
+        try:
+            completedProcess = subprocess.run(command, capture_output=True, text=True)
+        except:
+            completedProcess = None
+        if not completedProcess or completedProcess.returncode != 0:
+            self.ghProgressMethod(f"{command} failed to run, returned {completedProcess.returncode}")
+            self.ghProgressMethod(completedProcess.stdout)
+            self.ghProgressMethod(completedProcess.stderr)
+            return False
+        return True
+
     def checkGitDependencies(self):
         """Check that git, and gh are available
         """
@@ -456,18 +469,9 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             self.ghProgressMethod(f"git path is {self.gitPath}")
             self.ghProgressMethod(f"gh path is {self.ghPath}")
             return False
-        import subprocess
-        completedProcess = subprocess.run([self.gitPath, '--version'], capture_output=True, text=True)
-        if completedProcess.returncode != 0:
-            self.ghProgressMethod(f"git failed to run, returned {completedProcess.returncode}")
-            self.ghProgressMethod(completedProcess.stdout)
-            self.ghProgressMethod(completedProcess.stderr)
+        if not self.checkCommand([self.gitPath, '--version']):
             return False
-        completedProcess = subprocess.run([self.ghPath, 'auth', 'status'], capture_output=True, text=True)
-        if completedProcess.returncode != 0:
-            self.ghProgressMethod(f"gh failed to run, returned {completedProcess.returncode}")
-            self.ghProgressMethod(completedProcess.stdout)
-            self.ghProgressMethod(completedProcess.stderr)
+        if not self.checkCommand([self.ghPath, 'auth', 'status']):
             return False
         return True
 

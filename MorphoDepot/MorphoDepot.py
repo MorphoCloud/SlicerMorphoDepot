@@ -558,7 +558,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         fullCommandList = [self.ghPath] + commandList
         if self.usingSystemGit:
             environment = {
-                "PATH" : os.path.dirname(self.gitPath)
+                "PATH" : os.path.dirname(self.gitPath),
                 "GIT_EXEC_PATH": os.path.dirname(self.gitPath)
             }
         else:

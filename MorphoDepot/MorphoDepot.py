@@ -552,7 +552,10 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.ghProgressMethod(" ".join(commandList))
         fullCommandList = [self.ghPath] + commandList
         if self.usingSystemGit:
-            environment = {}
+            environment = {
+                "PATH" : self.gitExecutablesDir,
+                "GIT_EXEC_PATH" : self.gitExecutablesDir
+            }
         else:
             environment = {
                 "PATH" : self.gitExecutablesDir,

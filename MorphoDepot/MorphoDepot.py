@@ -448,7 +448,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
     def checkCommand(self, command):
         try:
-            completedProcess = subprocess.run(command, capture_output=True, text=True)
+            completedProcess = subprocess.run(command, capture_output=True)
             returnCode = completedProcess.returncode
             stdout = completedProcess.stdout
             stderr = completedProcess.stderr
@@ -457,7 +457,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             stderr = str(e)
             returnCode = -1
         if returnCode != 0:
-            self.ghProgressMethod(f"{command} failed to run, returned {returnCode}")
+            self.ghProgressMethod(f"{command} failed to run, returned {returncode}")
             self.ghProgressMethod(stdout)
             self.ghProgressMethod(stderr)
             return False
@@ -558,8 +558,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         fullCommandList = [self.ghPath] + commandList
         if self.usingSystemGit:
             environment = {
-                "PATH" : self.gitExecutablesDir,
-                "GIT_EXEC_PATH" : os.path.dirname(gitPath)
+                "PATH" : os.path.dirname(self.gitPath)
+                "GIT_EXEC_PATH": os.path.dirname(self.gitPath)
             }
         else:
             environment = {

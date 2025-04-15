@@ -365,7 +365,6 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         if not ghPath or ghPath == "":
             ghPath = shutil.which("gh")
         if gitPath and ghPath:
-            self.gitExecutablesDir = os.path.dirname(gitPath)
             self.gitPath = gitPath
             self.ghPath = ghPath
         else:
@@ -556,10 +555,14 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             logging.error("command must be string or list")
         self.ghProgressMethod(" ".join(commandList))
         fullCommandList = [self.ghPath] + commandList
+
         if self.usingSystemGit:
+            if not self.gitExecutablesDir:
+                completedProcess = subprocess.run([self.gitPath, "--exec-path"], capture_output=True)
+                self.gitExecutablesDir = completedProcess.stdout.strip()
             environment = {
                 "PATH" : os.path.dirname(self.gitPath),
-                "GIT_EXEC_PATH": os.path.dirname(self.gitPath)
+                "GIT_EXEC_PATH": self.gitExecutablesDir
             }
         else:
             environment = {

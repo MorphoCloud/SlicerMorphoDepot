@@ -457,7 +457,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             stderr = str(e)
             returnCode = -1
         if returnCode != 0:
-            self.ghProgressMethod(f"{command} failed to run, returned {returncode}")
+            self.ghProgressMethod(f"{command} failed to run, returned {returnCode}")
             self.ghProgressMethod(stdout)
             self.ghProgressMethod(stderr)
             return False

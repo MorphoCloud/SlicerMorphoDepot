@@ -455,7 +455,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 'stdout': "",
                 'stderr': str(e)
             }
-        if not completedProcess or completedProcess.returncode != 0:
+        if not completedProcess or completedProcess['returncode'] != 0:
             self.ghProgressMethod(f"{command} failed to run, returned {completedProcess['returncode']}")
             self.ghProgressMethod(completedProcess['stdout'])
             self.ghProgressMethod(completedProcess['stderr'])

@@ -449,12 +449,16 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     def checkCommand(self, command):
         try:
             completedProcess = subprocess.run(command, capture_output=True, text=True)
-        except:
-            completedProcess = None
+        except Exception as e:
+            completedProcess = {
+                'returncode': -1,
+                'stdout': "",
+                'stderr': str(e)
+            }
         if not completedProcess or completedProcess.returncode != 0:
-            self.ghProgressMethod(f"{command} failed to run, returned {completedProcess.returncode}")
-            self.ghProgressMethod(completedProcess.stdout)
-            self.ghProgressMethod(completedProcess.stderr)
+            self.ghProgressMethod(f"{command} failed to run, returned {completedProcess['returncode']}")
+            self.ghProgressMethod(completedProcess['stdout'])
+            self.ghProgressMethod(completedProcess['stderr'])
             return False
         return True
 

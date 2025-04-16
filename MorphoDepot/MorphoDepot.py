@@ -560,6 +560,10 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             if not self.gitExecutablesDir:
                 completedProcess = subprocess.run([self.gitPath, "--exec-path"], capture_output=True)
                 self.gitExecutablesDir = completedProcess.stdout.strip()
+                try:
+                    self.gitExecutablesDir = self.gitExecutablesDir.decode() # needed on windows
+                except (UnicodeDecodeError, AttributeError):
+                    pass
             environment = {
                 "PATH" : os.path.dirname(self.gitPath),
                 "GIT_EXEC_PATH": self.gitExecutablesDir

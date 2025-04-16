@@ -289,11 +289,13 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         logging.info(f"Setting gitPath to be {self.ui.gitPath.currentPath}")
         qt.QSettings().setValue("MorphoDepot/gitPath", self.ui.gitPath.currentPath)
         self.setupLogic()
+        self.enter()
 
     def onGhPathChanged(self):
         logging.info(f"Setting ghPath to be {self.ui.ghPath.currentPath}")
         qt.QSettings().setValue("MorphoDepot/ghPath", self.ui.ghPath.currentPath)
         self.setupLogic()
+        self.enter()
 
 
 #

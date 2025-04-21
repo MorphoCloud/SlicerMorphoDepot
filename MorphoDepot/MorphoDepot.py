@@ -404,9 +404,10 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         return hasattr(slicer.vtkSegment, "SetTerminology")
 
     def localRepositoryDirectory(self):
-        repoDirectory = slicer.util.settingsValue("MorphoDepot/repoDirectory", "")
+        repoDirectory = os.path.normpath(slicer.util.settingsValue("MorphoDepot/repoDirectory", ""))
         if repoDirectory == "":
-            defaultRepoDir = os.path.join(slicer.app.defaultScenePath, "MorphoDepot")
+            defaultScenePath = os.path.normpath(slicer.app.defaultScenePath)
+            defaultRepoDir = os.path.join(defaultScenePath, "MorphoDepot")
             self.setLocalRepositoryDirectory(defaultRepoDir)
             repoDirectory = defaultRepoDir
         return repoDirectory
@@ -866,7 +867,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     def createAccessionRepo(self, sourceVolume, colorTable, accessionData):
 
         repoName = accessionData['githubRepoName'][1]
-        repoDir = f"{self.localRepositoryDirectory()}/{repoName}"
+        repoDir = os.path.join(self.localRepositoryDirectory(), repoName)
         os.makedirs(repoDir)
 
         # save data

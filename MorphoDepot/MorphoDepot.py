@@ -344,7 +344,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         """Called when the logic class is instantiated. Can be used for initializing member variables."""
         ScriptedLoadableModuleLogic.__init__(self)
         self.segmentationNode = None
-        self.segmentationPath = ""
+        self.segmentationPath = None
         self.localRepo = None
         self.ghProgressMethod = ghProgressMethod if ghProgressMethod else lambda *args : None
         self.gitExecutablesDir = None
@@ -354,8 +354,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
         self.executableExtension = '.exe' if os.name == 'nt' else ''
         modulePath = os.path.split(slicer.modules.morphodepot.path)[0]
-        self.resourcesPath = modulePath + "/Resources"
-        self.pixiInstallDir = self.resourcesPath + "/pixi"
+        self.resourcesPath = os.path.normpath(modulePath + "/Resources")
+        self.pixiInstallDir = os.path.normpath(self.resourcesPath + "/pixi")
 
         # use configured git and gh paths if selected,
         # else use system installed git and gh if available
@@ -373,13 +373,13 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             # otherwise define where we expect to find git and gh after installation
             if not MorphoDepot.requireSystemGit:
                 if os.name == 'nt':
-                    self.gitExecutablesDir = self.pixiInstallDir + "/.pixi/envs/default/Library/bin"
-                    self.gitPath = self.gitExecutablesDir + "/git.exe"
-                    self.ghPath = self.pixiInstallDir + "/.pixi/envs/default/Scripts/gh.exe"
+                    self.gitExecutablesDir = os.path.join(self.pixiInstallDir, "/.pixi/envs/default/Library/bin")
+                    self.gitPath = os.path.join(self.gitExecutablesDir, "/git.exe")
+                    self.ghPath = os.path.join(self.pixiInstallDir, "/.pixi/envs/default/Scripts/gh.exe")
                 else:
-                    self.gitExecutablesDir = self.pixiInstallDir + "/.pixi/envs/default/bin"
-                    self.gitPath = self.gitExecutablesDir + "/git"
-                    self.ghPath = self.pixiInstallDir + "/.pixi/envs/default/bin/gh"
+                    self.gitExecutablesDir = os.path.join(self.pixiInstallDir, "/.pixi/envs/default/bin")
+                    self.gitPath = os.path.join(self.gitExecutablesDir, "/git")
+                    self.ghPath = os.path.join(self.pixiInstallDir, "/.pixi/envs/default/bin/gh")
                 self.usingSystemGit = False
 
         qt.QSettings().setValue("MorphoDepot/gitPath", self.gitPath)
@@ -519,7 +519,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         p = slicer.util.launchConsoleProcess(command, updateEnvironment=updateEnvironment)
         logging.info(str(p.communicate()))
 
-        pixiPath = self.pixiInstallDir + "/bin/pixi" + self.executableExtension
+        pixiPath = os.path.join(self.pixiInstallDir, "/bin/pixi") + self.executableExtension
         p = slicer.util.launchConsoleProcess([pixiPath, "init", self.pixiInstallDir], updateEnvironment=updateEnvironment)
         logging.info(str(p.communicate()))
         self.ghProgressMethod("Adding git")
@@ -532,7 +532,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.ghProgressMethod("Importing GitPython")
         self.importGitPython()
 
-        tempRepoDir = slicer.app.temporaryPath + "/_MorphoDepot_temp_git"
+        tempRepoDir = os.path.join(slicer.app.temporaryPath, "/_MorphoDepot_temp_git")
         shutil.rmtree(tempRepoDir, ignore_errors=True)
         os.makedirs(tempRepoDir)
         tempRepo = self.git.Repo.init(tempRepoDir)
@@ -715,11 +715,11 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
         # TODO: move from single volume file to segmentation specification json
         # TODO: save checksum in source_volume file to verify when downloading later
-        volumePath = f"{localDirectory}/source_volume"
+        volumePath = os.path.join(localDirectory, "source_volume")
         if not os.path.exists(volumePath):
-            volumePath = f"{localDirectory}/master_volume" # for backwards compatibility
+            volumePath = os.path.join("localDirectory", "master_volume") # for backwards compatibility
         volumeURL = open(volumePath).read().strip()
-        nrrdPath = f"{localDirectory}/{upstreamNameWithOwner.replace('/', '-')}-volume.nrrd"
+        nrrdPath = os.path.join(localDirectory, f"{upstreamNameWithOwner.replace('/', '-')}-volume.nrrd")
         if not os.path.exists(nrrdPath):
             slicer.util.downloadFile(volumeURL, nrrdPath)
         volumeNode = slicer.util.loadVolume(nrrdPath)
@@ -736,7 +736,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         pluginHandlerSingleton.pluginByName("Default").switchToModule("SegmentEditor")
         editorWidget = slicer.modules.segmenteditor.widgetRepresentation().self()
 
-        self.segmentationPath = f"{localDirectory}/{branchName}.seg.nrrd"
+        self.segmentationPath = os.path.join(localDirectory, branchName) + ".seg.nrrd"
         if branchName in segmentationNodesByName.keys():
             self.segmentationNode = segmentationNodesByName[branchName]
             self.segmentationNode.GetDisplayNode().SetVisibility(True)
@@ -871,13 +871,13 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
         # save data
         sourceFileName = sourceVolume.GetName()
-        sourceFilePath = f"{repoDir}/{sourceFileName}.nrrd"
+        sourceFilePath = os.path.join(repoDir, "sourceFileName") + ".nrrd"
         slicer.util.saveNode(sourceVolume, sourceFilePath)
         colorTableName = colorTable.GetName()
-        slicer.util.saveNode(colorTable, f"{repoDir}/{colorTableName}.csv")
+        slicer.util.saveNode(colorTable, os.path.join(repoDir, colorTableName) + ".csv")
 
         # write accessionData file
-        fp = open(f"{repoDir}/MorphoDepotAccession.json", "w")
+        fp = open(os.path.join(repoDir, "MorphoDepotAccession.json"), "w")
         fp.write(json.dumps(accessionData, indent=4))
         fp.close()
 
@@ -887,7 +887,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         else:
             licenseURL = "https://creativecommons.org/licenses/by/4.0/legalcode.txt"
         response = requests.get(licenseURL)
-        fp = open(f"{repoDir}/LICENSE.txt", "w")
+        fp = open(os.path.join(repoDir, "LICENSE.txt"), "w")
         fp.write(response.content.decode('ascii', errors="ignore"))
         fp.close()
 
@@ -903,7 +903,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         speciesTopicString = speciesString.lower().replace(" ", "-")
 
         # write readme file
-        fp = open(f"{repoDir}/README.md", "w")
+        fp = open(os.path.join(repoDir, "README.md"), "w")
         fp.write(f"""
 ## MorphoDepot Repository
 Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepotAccession.json) for specimen details.
@@ -918,11 +918,14 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
         # create initial repo
         repo = self.git.Repo.init(repoDir, initial_branch='main')
 
-        repo.index.add([f"{repoDir}/README.md",
-                        f"{repoDir}/LICENSE.txt",
-                        f"{repoDir}/MorphoDepotAccession.json",
-                        f"{repoDir}/{colorTableName}.csv",
-        ])
+        repoFileNames = [
+            "README.md",
+            "LICENSE.txt",
+            "MorphoDepotAccession.json",
+            f"{colorTableName}.csv",
+        ]
+        repoFilePaths = [os.path.join(repoDir, fileName) for fileName in repoFileNames]
+        repo.index.add(repoFilePaths)
         repo.index.commit("Initial commit")
 
         self.gh(f"repo create {repoName} --add-readme --disable-wiki --public --source {repoDir} --push")
@@ -939,7 +942,7 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
         self.gh(f"release upload --repo {repoNameWithOwner} v1 {sourceFilePath}#{sourceFileName}.nrrd")
 
         # write source volume pointer file
-        fp = open(f"{repoDir}/source_volume", "w")
+        fp = open(os.path.join(repoDir, "source_volume"), "w")
         fp.write(f"https://github.com/{repoNameWithOwner}/releases/download/v1/{sourceFileName}.nrrd")
         fp.close()
 

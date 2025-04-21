@@ -872,7 +872,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
         # save data
         sourceFileName = sourceVolume.GetName()
-        sourceFilePath = os.path.join(repoDir, "sourceFileName") + ".nrrd"
+        sourceFilePath = os.path.join(repoDir, sourceFileName) + ".nrrd"
         slicer.util.saveNode(sourceVolume, sourceFilePath)
         colorTableName = colorTable.GetName()
         slicer.util.saveNode(colorTable, os.path.join(repoDir, colorTableName) + ".csv")

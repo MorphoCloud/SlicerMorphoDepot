@@ -33,8 +33,8 @@ class MorphoDepot(ScriptedLoadableModule):
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
-    requireSystemGit = True # don't try to install using pixi
-                            # see https://github.com/MorphoCloud/SlicerMorphoDepot/issues/24
+    requireSystemGit = True  # don't try to install using pixi
+                             # see https://github.com/MorphoCloud/SlicerMorphoDepot/issues/24
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
@@ -80,7 +80,7 @@ class EnableModuleMixin:
                     logic.installGitDependencies(name, email)
                     self.enter()
                 except Exception as e:
-                    msg = "Installation failed.  Check error log for debugging information."
+                    msg = "Installation failed. Check error log for debugging information."
                     slicer.util.messageBox(msg)
                     print(f"Exception: {e}")
                     traceback.print_exc(file=sys.stderr)
@@ -94,11 +94,11 @@ class EnableModuleMixin:
             logic = MorphoDepotLogic(ghProgressMethod=MorphoDepotWidget.ghProgressMethod)
             logic.installPythonDependencies()
             msg = "Python package installation complete"
-            install = slicer.util.messageBox(msg)
+            slicer.util.messageBox(msg)
         return logic.checkPythonDependencies()
 
     def checkModuleEnabled(self):
-        """Module is only enabled if all of the dependencies are avaiable,
+        """Module is only enabled if all of the dependencies are available,
         possibly after the user has accepted installation and it worked as expected
         """
         if not self.logic.slicerVersionCheck():
@@ -150,7 +150,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
 
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
-        uiWidget = slicer.util.loadUI(self.resourcePath("UI/MorphoDepot.ui"))
+        uiWidget = slicer.util.loadUI(os.path.normpath(self.resourcePath("UI/MorphoDepot.ui")))
         self.layout.addWidget(uiWidget)
         self.ui = slicer.util.childWidgetVariables(uiWidget)
 
@@ -164,12 +164,12 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         # only allow picking directories (bitwise AND NOT file filter bit)
         self.ui.repoDirectory.filters = self.ui.repoDirectory.filters & ~self.ui.repoDirectory.Files
 
-        repoDir = self.logic.localRepositoryDirectory()
+        repoDir = os.path.normpath(self.logic.localRepositoryDirectory())
         self.ui.repoDirectory.currentPath = repoDir
 
-        self.ui.gitPath.currentPath = self.logic.gitPath
+        self.ui.gitPath.currentPath = os.path.normpath(self.logic.gitPath)
         self.ui.gitPath.toolTip = "Restart Slicer after setting new path"
-        self.ui.ghPath.currentPath = self.logic.ghPath
+        self.ui.ghPath.currentPath = os.path.normpath(self.logic.ghPath)
         self.ui.ghPath.toolTip = "Restart Slicer after setting new path"
 
         self.ui.forkManagementCollapsibleButton.enabled = False
@@ -245,7 +245,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
 
     def onIssueDoubleClicked(self, item):
         slicer.util.showStatusMessage(f"Loading {item.text()}")
-        repoDirectory = self.ui.repoDirectory.currentPath
+        repoDirectory = os.path.normpath(self.ui.repoDirectory.currentPath)
         issue = self.issuesByItem[item]
         if slicer.util.confirmOkCancelDisplay("Close scene and load issue?"):
             self.ui.currentIssueLabel.text = f"Issue: {item.text()}"
@@ -255,10 +255,10 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
                 self.ui.forkManagementCollapsibleButton.enabled = True
                 slicer.util.showStatusMessage(f"Start segmenting {item.text()}")
             except self.logic.git.exc.NoSuchPathError:
-                slicer.util.errorDisplay("Could not load issue.  If it was just created on github please wait a few seconds and try again")
+                slicer.util.errorDisplay("Could not load issue. If it was just created on github please wait a few seconds and try again")
 
     def onCommit(self):
-        slicer.util.showStatusMessage(f"Commiting and pushing")
+        slicer.util.showStatusMessage(f"Committing and pushing")
         message = self.ui.messageTitle.text
         if message == "":
             slicer.util.messageBox("You must provide a commit message (title required, body optional)")
@@ -271,8 +271,8 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             slicer.util.showStatusMessage(f"Commit and push complete")
             self.updatePRList()
         else:
-            path = self.ui.repoDirectory.currentPath
-            slicer.util.messageBox(f"Commit failed.\nYour repository conflicts with what's on github.  Copy your work from {path} and then delete the local repository folder and restart the issues.")
+            path = os.path.normpath(self.ui.repoDirectory.currentPath)
+            slicer.util.messageBox(f"Commit failed.\nYour repository conflicts with what's on github. Copy your work from {path} and then delete the local repository folder and restart the issues.")
             slicer.util.showStatusMessage(f"Commit and push failed")
 
     def onRequestReview(self):
@@ -282,18 +282,18 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.updatePRList()
 
     def onRepoDirectoryChanged(self):
-        logging.info(f"Setting repoDirectory to be {self.ui.repoDirectory.currentPath}")
-        self.logic.setLocalRepositoryDirectory(self.ui.repoDirectory.currentPath)
+        logging.info(f"Setting repoDirectory to be {os.path.normpath(self.ui.repoDirectory.currentPath)}")
+        self.logic.setLocalRepositoryDirectory(os.path.normpath(self.ui.repoDirectory.currentPath))
 
     def onGitPathChanged(self):
-        logging.info(f"Setting gitPath to be {self.ui.gitPath.currentPath}")
-        qt.QSettings().setValue("MorphoDepot/gitPath", self.ui.gitPath.currentPath)
+        logging.info(f"Setting gitPath to be {os.path.normpath(self.ui.gitPath.currentPath)}")
+        qt.QSettings().setValue("MorphoDepot/gitPath", os.path.normpath(self.ui.gitPath.currentPath))
         self.setupLogic()
         self.enter()
 
     def onGhPathChanged(self):
-        logging.info(f"Setting ghPath to be {self.ui.ghPath.currentPath}")
-        qt.QSettings().setValue("MorphoDepot/ghPath", self.ui.ghPath.currentPath)
+        logging.info(f"Setting ghPath to be {os.path.normpath(self.ui.ghPath.currentPath)}")
+        qt.QSettings().setValue("MorphoDepot/ghPath", os.path.normpath(self.ui.ghPath.currentPath))
         self.setupLogic()
         self.enter()
 

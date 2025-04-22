@@ -1,4 +1,5 @@
-<img src="./MorphoDepot.png" width=300>
+<p align="center" > <img src="./MorphoDepot.png" width=300> </p>
+
 
 
 # MorphoDepot
@@ -27,7 +28,7 @@ The Slicer extension uses git behind the scenes, but most of the project managem
 6. Install the MorphoDepot Slicer extension. 
 
 ## Next Steps
-Each MorphoDepot workflow have two separate personas: **Repository Owner**, and **Individuals**. 
+Each MorphoDepot workflow have two separate personas: **Repository Owner**, and **Individuals (aka segmenters)**. 
 * **Repository owners** provide the MorphoDepot repository (which contains the scan data and if there is any, available segmentation), the terminology to be used in the project, and optionally describe open tasks that needs to be completed.
 * **Individuals** can be students in a class, or a project team from a PI's lab. Each one gets assigned a specific task by the Repository Owner, and obtain and complete these assignments via MorphoDepot module in 3D Slicer.
 

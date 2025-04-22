@@ -31,8 +31,6 @@ Each MorphoDepot workflow have two separate personas: **Repository Owner**, and 
 * **Repository owners** provide the MorphoDepot repository (which contains the scan data and if there is any, available segmentation), the terminology to be used in the project, and optionally describe open tasks that needs to be completed.
 * **Individuals** can be students in a class, or a project team from a PI's lab. Each one gets assigned a specific task by the Repository Owner, and obtain and complete these assignments via MorphoDepot module in 3D Slicer.
 
-[Follow this link for more documentation about how each persona interact with MorphoDepot and the tasks they are responsible for:](https://github.com/MorphoCloud/MorphoDepotDocs/blob/main/README.md)   
-
 # Funding 
 
-MorphoDepot module is supported by funding from National Science Foundation (DBI/2301405). 
+MorphoDepot module is supported by funding from National Science Foundation ([DBI/2301405](https://www.nsf.gov/awardsearch/showAward?AWD_ID=2301405&HistoricalAwards=false)). 

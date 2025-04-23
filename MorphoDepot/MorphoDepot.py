@@ -894,12 +894,19 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         fp.close()
 
         if accessionData['iDigBioAccessioned'][1] == "Yes":
-            idigbioURL = accessionData['iDigBioURL']
+            idigbioURL = accessionData['iDigBioURL'][1]
             specimenID = idigbioURL.split("/")[-1]
             import idigbio
             api = idigbio.json()
             idigbioData = api.view("records", specimenID)
-            speciesString = idigbioData['data']['ala:species']
+            if 'ala:species' in idigbioData['data']:
+                speciesString = idigbioData['data']['ala:species']
+            elif 'dwc:scientificName' in idigbioData['data']:
+                speciesString = idigbioData['data']['dwc:scientificName']
+            else:
+                logging.warning(f"Could not find species for {idigbioURL}")
+                logging.warning(f"Response from api: {idigbioData}")
+                speciesString = "Unknown species"
         else:
             speciesString = accessionData['species'][1]
         speciesTopicString = speciesString.lower().replace(" ", "-")

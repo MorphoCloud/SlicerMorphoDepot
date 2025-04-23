@@ -360,11 +360,12 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         # use configured git and gh paths if selected,
         # else use system installed git and gh if available
         # Optionally install with pixi, but only if requireSystemGit is False
+        # note: normpath returns "." when given ""
         gitPath = os.path.normpath(slicer.util.settingsValue("MorphoDepot/gitPath", ""))
         ghPath = os.path.normpath(slicer.util.settingsValue("MorphoDepot/ghPath", ""))
-        if not gitPath or gitPath == "":
+        if not gitPath or gitPath == "" or gitPath == ".":
             gitPath = shutil.which("git")
-        if not ghPath or ghPath == "":
+        if not ghPath or ghPath == "" or ghPath == ".":
             ghPath = shutil.which("gh")
         if gitPath and ghPath:
             self.gitPath = gitPath

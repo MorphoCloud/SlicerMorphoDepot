@@ -406,7 +406,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
     def localRepositoryDirectory(self):
         repoDirectory = os.path.normpath(slicer.util.settingsValue("MorphoDepot/repoDirectory", ""))
-        if repoDirectory == "":
+        if repoDirectory == "" or repoDirectory == ".":
             defaultScenePath = os.path.normpath(slicer.app.defaultScenePath)
             defaultRepoDir = os.path.join(defaultScenePath, "MorphoDepot")
             self.setLocalRepositoryDirectory(defaultRepoDir)

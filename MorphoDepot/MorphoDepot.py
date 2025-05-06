@@ -112,6 +112,7 @@ class EnableModuleMixin:
         if MorphoDepot.requireSystemGit:
             if not self.logic.checkGitDependencies():
                 msg = "The git and gh must be installed and configured."
+                msg += "\nBe sure that you have logged into Github with 'gh auth login' and then restart Slicer."
                 msg += "\nSee documentation for platform-specific instructions"
                 slicer.util.messageBox(msg)
                 return False

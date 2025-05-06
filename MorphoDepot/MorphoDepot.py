@@ -168,9 +168,9 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         repoDir = os.path.normpath(self.logic.localRepositoryDirectory())
         self.ui.repoDirectory.currentPath = repoDir
 
-        self.ui.gitPath.currentPath = os.path.normpath(self.logic.gitPath)
+        self.ui.gitPath.currentPath = os.path.normpath(self.logic.gitPath) if self.logic.gitPath else ""
         self.ui.gitPath.toolTip = "Restart Slicer after setting new path"
-        self.ui.ghPath.currentPath = os.path.normpath(self.logic.ghPath)
+        self.ui.ghPath.currentPath = os.path.normpath(self.logic.ghPath) if self.logic.ghPath else ""
         self.ui.ghPath.toolTip = "Restart Slicer after setting new path"
 
         self.ui.forkManagementCollapsibleButton.enabled = False

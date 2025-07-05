@@ -590,14 +590,13 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
     def morphoRepos(self):
         # TODO: generalize for other topics
-        return json.loads(self.gh("search repos --json owner,name --include-forks true -- topic:morphodepot"))
+        return json.loads(self.gh("search repos --limit 1000 --json owner,name --include-forks true -- topic:morphodepot"))
 
     def issueList(self):
         repoList = self.morphoRepos()
-        issueList = []
-        for repo in repoList:
-            repoID = f"{repo['owner']['login']}/{repo['name']}"
-            issueList += json.loads(self.gh(f"search issues --assignee=@me --state open --repo {repoID} --json repository,title,number"))
+        candiateIssueList = json.loads(self.gh(f"search issues --limit 1000 --assignee=@me --state open --json repository,title,number"))
+        repoNamesWithOwner = [f"{repo['owner']['login']}/{repo['name']}" for repo in repoList]
+        issueList = [issue for issue in candiateIssueList if issue['repository']['nameWithOwner'] in repoNamesWithOwner]
         return issueList
 
     def prList(self, role="segmenter"):

@@ -219,7 +219,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         prList = self.logic.prList(role="segmenter")
         for pr in prList:
             prStatus = 'draft' if pr['isDraft'] else 'ready for review'
-            prTitle = f"{pr['title']} {pr['repository']['nameWithOwner']}: {pr['title']} ({prStatus})"
+            prTitle = f"{pr['issueTitle']} {pr['repository']['nameWithOwner']}: {pr['title']} ({prStatus})"
             item = qt.QListWidgetItem(prTitle)
             self.prsByItem[item] = pr
             self.ui.prList.addItem(item)
@@ -609,6 +609,12 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         jsonFields = "title,number,isDraft,updatedAt,repository"
         candidatePRList = json.loads(self.gh(f"search prs --limit 1000 --state open --json {jsonFields} {searchString}"))
         prList = [pr for pr in candidatePRList if pr['repository']['nameWithOwner'] in repoNamesWithOwner]
+        for pr in prList:
+            issues = json.loads(self.gh(f"issue list --repo {pr['repository']['nameWithOwner']} --json title,number --state open"))
+            pr['issueTitle'] = "issue not found"
+            for issue in issues:
+                if pr['title'] == f"issue-{issue['number']}":
+                    pr['issueTitle'] = issue['title']
         return prList
 
     def repositoryList(self):

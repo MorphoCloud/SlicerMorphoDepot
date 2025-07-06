@@ -941,6 +941,26 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
         repo.index.commit("Add source file url file")
         repo.remote(name="origin").push()
 
+    def cacheAccessionData(self, cachePath):
+        os.makedirs(cachePath, exist_ok=True)
+        repoList = json.loads(self.gh("search repos --limit 1000 --json owner,name -- topic:morphodepot"))
+        for repo in repoList:
+            login = repo['owner']['login']
+            name = repo['name']
+            repoCacheFilePath = f"{cachePath}/{login}-{name}-accession.json"
+            if not os.path.exists(repoCacheFilePath):
+                accessionURL = f"https://raw.githubusercontent.com/{login}/{name}/refs/heads/main/MorphoDepotAccession.json"
+                response = requests.get(accessionURL)
+                fp = open(repoCacheFilePath, "w")
+                fp.write(response.content.decode("ascii", error="ignore"))
+                fp.close()
+
+    def loadAccessionData(self, cachePath):
+        accessionsByNameWithOwner = {}
+        cacheFiles = glob.glob(f"{cachePath}/*.json")
+        for cacheFile in cacheFiles:
+            pass
+
 
 #
 # MorphoDepotTest

@@ -608,7 +608,6 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             searchString = "--owner=@me"
         jsonFields = "title,number,isDraft,updatedAt,repository"
         candidatePRList = json.loads(self.gh(f"search prs --limit 1000 --state open --json {jsonFields} {searchString}"))
-        #candidatePRList = json.loads(self.gh(f"search prs --limit 1000 --json {jsonFields} {searchString}"))
         prList = [pr for pr in candidatePRList if pr['repository']['nameWithOwner'] in repoNamesWithOwner]
         return prList
 

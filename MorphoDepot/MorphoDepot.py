@@ -606,7 +606,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             searchString = "--author=@me"
         elif role == "reviewer":
             searchString = "--owner=@me"
-        jsonFields = "title,number,isDraft,updatedAt,repository"
+        jsonFields = "title,number,author,isDraft,updatedAt,repository"
         candidatePRList = json.loads(self.gh(f"search prs --limit 1000 --state open --json {jsonFields} {searchString}"))
         prList = [pr for pr in candidatePRList if pr['repository']['nameWithOwner'] in repoNamesWithOwner]
         for pr in prList:
@@ -673,7 +673,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     @gitEnvironmentDecorator
     def loadPR(self, pr, repoDirectory):
         branchName = pr['title']
-        repositoryName = pr['repository']['nameWithOwner']
+        repositoryName = f"{pr['author']['login']}/{pr['repository']['name']}"
         localDirectory = f"{repoDirectory}/{pr['repository']['name']}-{branchName}"
         self.ghProgressMethod(f"Loading issue {repositoryName} into {localDirectory}")
 

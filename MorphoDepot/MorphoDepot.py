@@ -700,14 +700,21 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
         self.ghProgressMethod(f"Loading {branchName} into {localDirectory}")
 
-        colorPath = glob.glob(f"{localDirectory}/*.csv")[0]
-        colorNode = slicer.util.loadColorTable(colorPath)
+        try:
+            colorPath = glob.glob(f"{localDirectory}/*.csv")[0]
+            colorNode = slicer.util.loadColorTable(colorPath)
+        except IndexError:
+            try:
+                colorPath = glob.glob(f"{localDirectory}/*.ctbl")[0]
+                colorNode = slicer.util.loadColorTable(colorPath)
+            except IndexError:
+                self.ghProgressMethod(f"No color table found")
 
         # TODO: move from single volume file to segmentation specification json
         # TODO: save checksum in source_volume file to verify when downloading later
         volumePath = os.path.join(localDirectory, "source_volume")
         if not os.path.exists(volumePath):
-            volumePath = os.path.join("localDirectory", "master_volume") # for backwards compatibility
+            volumePath = os.path.join(localDirectory, "master_volume") # for backwards compatibility
         volumeURL = open(volumePath).read().strip()
         nrrdPath = os.path.join(localDirectory, f"{upstreamNameWithOwner.replace('/', '-')}-volume.nrrd")
         if not os.path.exists(nrrdPath):

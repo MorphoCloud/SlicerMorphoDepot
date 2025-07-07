@@ -673,8 +673,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     @gitEnvironmentDecorator
     def loadPR(self, pr, repoDirectory):
         branchName = pr['title']
-        repositoryName = f"{pr['headRepositoryOwner']['login']}/{pr['headRepository']['name']}"
-        localDirectory = f"{repoDirectory}/{pr['headRepository']['name']}-{branchName}"
+        repositoryName = pr['repository']['nameWithOwner']
+        localDirectory = f"{repoDirectory}/{pr['repository']['name']}-{branchName}"
         self.ghProgressMethod(f"Loading issue {repositoryName} into {localDirectory}")
 
         if not os.path.exists(localDirectory):

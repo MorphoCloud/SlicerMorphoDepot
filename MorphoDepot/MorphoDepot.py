@@ -51,6 +51,29 @@ This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc
 and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
 """)
 
+#
+# Utility
+#
+def downloadFileWorkaround(url, filePath):
+    """Workaround for https://github.com/Slicer/Slicer/issues/8541"""
+    import time
+    networkManager = qt.QNetworkAccessManager()
+    request = qt.QNetworkRequest()
+    request.setAttribute(qt.QNetworkRequest.FollowRedirectsAttribute, True)
+
+    request.setUrl(qt.QUrl(url))
+    reply = networkManager.get(request)
+
+    while not reply.isFinished():
+        # bad form, but needed to emulate synchronous
+        slicer.app.processEvents()
+
+    data = reply.readAll()
+    file = qt.QFile(filePath)
+    file.open(qt.QIODevice.WriteOnly)
+    file.write(data)
+    file.close()
+
 
 #
 # MorphoDepotWidget
@@ -504,7 +527,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.ghProgressMethod("Downloading pixi")
         url = f'https://pixi.sh/{fileName}'
         scriptPath = self.pixiInstallDir + "/" + fileName
-        slicer.util.downloadFile(url, scriptPath)
+        #slicer.util.downloadFile(url, scriptPath)
+        downloadFileWorkaround(url, scriptPath)
 
         self.ghProgressMethod("Running pixi installer")
         updateEnvironment = {}
@@ -718,7 +742,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         volumeURL = open(volumePath).read().strip()
         nrrdPath = os.path.join(localDirectory, f"{upstreamNameWithOwner.replace('/', '-')}-volume.nrrd")
         if not os.path.exists(nrrdPath):
-            slicer.util.downloadFile(volumeURL, nrrdPath)
+            #slicer.util.downloadFile(volumeURL, nrrdPath)
+            downloadFileWorkaround(volumeURL, nrrdPath)
         volumeNode = slicer.util.loadVolume(nrrdPath)
 
         # Load all segmentations

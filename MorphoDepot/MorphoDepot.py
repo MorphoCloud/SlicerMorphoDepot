@@ -51,6 +51,29 @@ This file was originally developed by Jean-Christophe Fillion-Robin, Kitware Inc
 and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR013218-12S1.
 """)
 
+#
+# Utility
+#
+def downloadFileWorkaround(url, filePath):
+    """Workaround for https://github.com/Slicer/Slicer/issues/8541"""
+    import time
+    networkManager = qt.QNetworkAccessManager()
+    request = qt.QNetworkRequest()
+    request.setAttribute(qt.QNetworkRequest.FollowRedirectsAttribute, True)
+
+    request.setUrl(qt.QUrl(url))
+    reply = networkManager.get(request)
+
+    while not reply.isFinished():
+        # bad form, but needed to emulate synchronous
+        slicer.app.processEvents()
+
+    data = reply.readAll()
+    file = qt.QFile(filePath)
+    file.open(qt.QIODevice.WriteOnly)
+    file.write(data)
+    file.close()
+
 
 #
 # MorphoDepotWidget
@@ -219,7 +242,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         prList = self.logic.prList(role="segmenter")
         for pr in prList:
             prStatus = 'draft' if pr['isDraft'] else 'ready for review'
-            prTitle = f"{pr['title']} {pr['repository']['nameWithOwner']}: {pr['title']} ({prStatus})"
+            prTitle = f"{pr['issueTitle']} {pr['repository']['nameWithOwner']}: {pr['title']} ({prStatus})"
             item = qt.QListWidgetItem(prTitle)
             self.prsByItem[item] = pr
             self.ui.prList.addItem(item)
@@ -504,7 +527,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.ghProgressMethod("Downloading pixi")
         url = f'https://pixi.sh/{fileName}'
         scriptPath = self.pixiInstallDir + "/" + fileName
-        slicer.util.downloadFile(url, scriptPath)
+        #slicer.util.downloadFile(url, scriptPath)
+        downloadFileWorkaround(url, scriptPath)
 
         self.ghProgressMethod("Running pixi installer")
         updateEnvironment = {}
@@ -606,9 +630,15 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             searchString = "--author=@me"
         elif role == "reviewer":
             searchString = "--owner=@me"
-        jsonFields = "title,number,isDraft,updatedAt,repository"
+        jsonFields = "title,number,author,isDraft,updatedAt,repository"
         candidatePRList = json.loads(self.gh(f"search prs --limit 1000 --state open --json {jsonFields} {searchString}"))
         prList = [pr for pr in candidatePRList if pr['repository']['nameWithOwner'] in repoNamesWithOwner]
+        for pr in prList:
+            issues = json.loads(self.gh(f"issue list --repo {pr['repository']['nameWithOwner']} --json title,number --state open"))
+            pr['issueTitle'] = "issue not found"
+            for issue in issues:
+                if pr['title'] == f"issue-{issue['number']}":
+                    pr['issueTitle'] = issue['title']
         return prList
 
     def repositoryList(self):
@@ -667,8 +697,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     @gitEnvironmentDecorator
     def loadPR(self, pr, repoDirectory):
         branchName = pr['title']
-        repositoryName = f"{pr['headRepositoryOwner']['login']}/{pr['headRepository']['name']}"
-        localDirectory = f"{repoDirectory}/{pr['headRepository']['name']}-{branchName}"
+        repositoryName = f"{pr['author']['login']}/{pr['repository']['name']}"
+        localDirectory = f"{repoDirectory}/{pr['repository']['name']}-{branchName}"
         self.ghProgressMethod(f"Loading issue {repositoryName} into {localDirectory}")
 
         if not os.path.exists(localDirectory):
@@ -694,18 +724,26 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
         self.ghProgressMethod(f"Loading {branchName} into {localDirectory}")
 
-        colorPath = glob.glob(f"{localDirectory}/*.csv")[0]
-        colorNode = slicer.util.loadColorTable(colorPath)
+        try:
+            colorPath = glob.glob(f"{localDirectory}/*.csv")[0]
+            colorNode = slicer.util.loadColorTable(colorPath)
+        except IndexError:
+            try:
+                colorPath = glob.glob(f"{localDirectory}/*.ctbl")[0]
+                colorNode = slicer.util.loadColorTable(colorPath)
+            except IndexError:
+                self.ghProgressMethod(f"No color table found")
 
         # TODO: move from single volume file to segmentation specification json
         # TODO: save checksum in source_volume file to verify when downloading later
         volumePath = os.path.join(localDirectory, "source_volume")
         if not os.path.exists(volumePath):
-            volumePath = os.path.join("localDirectory", "master_volume") # for backwards compatibility
+            volumePath = os.path.join(localDirectory, "master_volume") # for backwards compatibility
         volumeURL = open(volumePath).read().strip()
         nrrdPath = os.path.join(localDirectory, f"{upstreamNameWithOwner.replace('/', '-')}-volume.nrrd")
         if not os.path.exists(nrrdPath):
-            slicer.util.downloadFile(volumeURL, nrrdPath)
+            #slicer.util.downloadFile(volumeURL, nrrdPath)
+            downloadFileWorkaround(volumeURL, nrrdPath)
         volumeNode = slicer.util.loadVolume(nrrdPath)
 
         # Load all segmentations

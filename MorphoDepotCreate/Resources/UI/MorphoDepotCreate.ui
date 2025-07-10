@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>MorphoDepotAccession</class>
- <widget class="qMRMLWidget" name="MorphoDepotAccession">
+ <class>MorphoDepotCreate</class>
+ <widget class="qMRMLWidget" name="MorphoDepotCreate">
   <property name="geometry">
    <rect>
     <x>0</x>
@@ -118,7 +118,7 @@
  <resources/>
  <connections>
   <connection>
-   <sender>MorphoDepotAccession</sender>
+   <sender>MorphoDepotCreate</sender>
    <signal>mrmlSceneChanged(vtkMRMLScene*)</signal>
    <receiver>inputSelector</receiver>
    <slot>setMRMLScene(vtkMRMLScene*)</slot>

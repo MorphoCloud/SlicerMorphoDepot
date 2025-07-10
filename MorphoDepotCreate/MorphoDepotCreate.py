@@ -9,22 +9,22 @@ import MorphoDepot
 
 
 #
-# MorphoDepotAccession
+# MorphoDepotCreate
 #
 
-class MorphoDepotAccession(ScriptedLoadableModule):
+class MorphoDepotCreate(ScriptedLoadableModule):
     """Uses ScriptedLoadableModule base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
     def __init__(self, parent):
         ScriptedLoadableModule.__init__(self, parent)
-        self.parent.title = _("MorphoDepotAccession")
+        self.parent.title = _("MorphoDepotCreate")
         self.parent.categories = [translate("qSlicerAbstractCoreModule", "SlicerMorph")]
         self.parent.dependencies = ["MorphoDepot"]
         self.parent.contributors = ["Steve Pieper (Isomics, Inc.)"]
         self.parent.helpText = _("""
-This module is the client side review tool of the MorphoDepotAccession collaborative segmentation tool.
+This module is the client side review tool of the MorphoDepotCreate collaborative segmentation tool.
 """)
         self.parent.acknowledgementText = _("""
 This was developed as part of the SlicerMorhpCloud project funded by the NSF.
@@ -34,10 +34,10 @@ and Steve Pieper, Isomics, Inc. and was partially funded by NIH grant 3P41RR0132
 
 
 #
-# MorphoDepotAccessionWidget
+# MorphoDepotCreateWidget
 #
 
-class MorphoDepotAccessionWidget(ScriptedLoadableModuleWidget, MorphoDepot.EnableModuleMixin):
+class MorphoDepotCreateWidget(ScriptedLoadableModuleWidget, MorphoDepot.EnableModuleMixin):
     """Uses ScriptedLoadableModuleWidget base class, available at:
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
@@ -57,7 +57,7 @@ class MorphoDepotAccessionWidget(ScriptedLoadableModuleWidget, MorphoDepot.Enabl
 
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.
-        uiWidget = slicer.util.loadUI(self.resourcePath("UI/MorphoDepotAccession.ui"))
+        uiWidget = slicer.util.loadUI(self.resourcePath("UI/MorphoDepotCreate.ui"))
         self.layout.addWidget(uiWidget)
         self.ui = slicer.util.childWidgetVariables(uiWidget)
 
@@ -536,11 +536,11 @@ class FormSpeciesQuestion(FormTextQuestion):
         return self.answerText.text
 
 #
-# MorphoDepotAccessionLogic
+# MorphoDepotCreateLogic
 #
 
 
-class MorphoDepotAccessionLogic(ScriptedLoadableModuleLogic):
+class MorphoDepotCreateLogic(ScriptedLoadableModuleLogic):
     """
     No logic here - rely on MorphoDepot logic
     """
@@ -551,11 +551,11 @@ class MorphoDepotAccessionLogic(ScriptedLoadableModuleLogic):
 
 
 #
-# MorphoDepotAccessionTest
+# MorphoDepotCreateTest
 #
 
 
-class MorphoDepotAccessionTest(ScriptedLoadableModuleTest):
+class MorphoDepotCreateTest(ScriptedLoadableModuleTest):
     """
     This is the test case for your scripted module.
     Uses ScriptedLoadableModuleTest base class, available at:
@@ -569,9 +569,9 @@ class MorphoDepotAccessionTest(ScriptedLoadableModuleTest):
     def runTest(self):
         """Run as few or as many tests as needed here."""
         self.setUp()
-        self.test_MorphoDepotAccession1()
+        self.test_MorphoDepotCreate1()
 
-    def test_MorphoDepotAccession1(self):
+    def test_MorphoDepotCreate1(self):
         """
         No testing here because it's very hard to test the server side
         """

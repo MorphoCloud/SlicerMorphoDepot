@@ -1,5 +1,5 @@
 #-----------------------------------------------------------------------------
-set(MODULE_NAME MorphoDepotAccession)
+set(MODULE_NAME MorphoDepotCreate)
 
 #-----------------------------------------------------------------------------
 set(MODULE_PYTHON_SCRIPTS

@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 import glob
 import json
+import locale
 import logging
 import os
 import shutil
@@ -385,8 +386,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         # else use system installed git and gh if available
         # Optionally install with pixi, but only if requireSystemGit is False
         # note: normpath returns "." when given ""
-        gitPath = os.path.normpath(slicer.util.settingsValue("MorphoDepot/gitPath", ""))
-        ghPath = os.path.normpath(slicer.util.settingsValue("MorphoDepot/ghPath", ""))
+        gitPath = os.path.normpath(slicer.util.settingsValue("MorphoDepot/gitPath", "") or "")
+        ghPath = os.path.normpath(slicer.util.settingsValue("MorphoDepot/ghPath", "") or "")
         if not gitPath or gitPath == "" or gitPath == ".":
             gitPath = shutil.which("git")
         if not ghPath or ghPath == "" or ghPath == ".":
@@ -429,7 +430,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         return hasattr(slicer.vtkSegment, "SetTerminology")
 
     def localRepositoryDirectory(self):
-        repoDirectory = os.path.normpath(slicer.util.settingsValue("MorphoDepot/repoDirectory", ""))
+        repoDirectory = os.path.normpath(slicer.util.settingsValue("MorphoDepot/repoDirectory", "") or "")
         if repoDirectory == "" or repoDirectory == ".":
             defaultScenePath = os.path.normpath(slicer.app.defaultScenePath)
             defaultRepoDir = os.path.join(defaultScenePath, "MorphoDepot")
@@ -585,6 +586,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.ghProgressMethod(" ".join(commandList))
         fullCommandList = [self.ghPath] + commandList
 
+        environment = {}
         if self.usingSystemGit:
             if not self.gitExecutablesDir:
                 completedProcess = subprocess.run([self.gitPath, "--exec-path"], capture_output=True)
@@ -593,18 +595,21 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                     self.gitExecutablesDir = self.gitExecutablesDir.decode() # needed on windows
                 except (UnicodeDecodeError, AttributeError):
                     pass
-            environment = {
-                "PATH" : os.path.dirname(self.gitPath),
-                "GIT_EXEC_PATH": self.gitExecutablesDir
-            }
+                environment = {
+                    "PATH" : os.path.dirname(self.gitPath),
+                    "GIT_EXEC_PATH": self.gitExecutablesDir
+                }
         else:
             environment = {
                 "PATH" : self.gitExecutablesDir,
                 "GIT_EXEC_PATH" : self.gitExecutablesDir,
                 "GH_CONFIG_DIR" : self.pixiInstallDir
             }
+        originalLocale = locale.setlocale(locale.LC_ALL)
+        locale.setlocale(locale.LC_ALL, "en_US.UTF-8")
         process = slicer.util.launchConsoleProcess(fullCommandList, updateEnvironment=environment)
         result = process.communicate()
+        locale.setlocale(locale.LC_ALL, originalLocale)
         if process.returncode != 0:
             logging.error("gh command failed:")
             logging.error(commandList)

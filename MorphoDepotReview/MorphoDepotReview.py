@@ -82,8 +82,8 @@ class MorphoDepotReviewWidget(ScriptedLoadableModuleWidget, VTKObservationMixin,
         uiWidget.setMRMLScene(slicer.mrmlScene)
 
         # Uses MorphoDepot logic and widget so all related methods are together
-        ghProgressMethod = lambda message : MorphoDepot.MorphoDepotWidget.ghProgressMethod(None, message)
-        self.logic = MorphoDepot.MorphoDepotLogic(ghProgressMethod)
+        progressMethod = lambda message : MorphoDepot.MorphoDepotWidget.progressMethod(None, message)
+        self.logic = MorphoDepot.MorphoDepotLogic(progressMethod)
 
         self.ui.prCollapsibleButton.enabled = False
 

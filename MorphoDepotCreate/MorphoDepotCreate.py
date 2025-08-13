@@ -52,8 +52,8 @@ class MorphoDepotCreateWidget(ScriptedLoadableModuleWidget, MorphoDepot.EnableMo
         ScriptedLoadableModuleWidget.setup(self)
 
         # Uses MorphoDepot logic and widget so all related methods are together
-        ghProgressMethod = lambda message : MorphoDepot.MorphoDepotWidget.ghProgressMethod(None, message)
-        self.logic = MorphoDepot.MorphoDepotLogic(ghProgressMethod)
+        progressMethod = lambda message : MorphoDepot.MorphoDepotWidget.progressMethod(None, message)
+        self.logic = MorphoDepot.MorphoDepotLogic(progressMethod)
 
         # Load widget from .ui file (created by Qt Designer).
         # Additional widgets can be instantiated manually and added to self.layout.

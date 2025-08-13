@@ -97,7 +97,7 @@ class EnableModuleMixin:
         msg += "\nClick OK to install them for MorphoDepot."
         install = slicer.util.confirmOkCancelDisplay(msg)
         if install:
-            logic = MorphoDepotLogic(ghProgressMethod=MorphoDepotWidget.ghProgressMethod)
+            logic = MorphoDepotLogic(progressMethod=MorphoDepotWidget.progressMethod)
             if not logic.usingSystemGit:
                 name,email = self.promptForGitConfig()
                 try:
@@ -115,7 +115,7 @@ class EnableModuleMixin:
         msg += "\nClick OK to install them for MorphoDepot."
         install = slicer.util.confirmOkCancelDisplay(msg)
         if install:
-            logic = MorphoDepotLogic(ghProgressMethod=MorphoDepotWidget.ghProgressMethod)
+            logic = MorphoDepotLogic(progressMethod=MorphoDepotWidget.progressMethod)
             logic.installPythonDependencies()
             msg = "Python package installation complete"
             slicer.util.messageBox(msg)
@@ -160,14 +160,14 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.issuesByItem = {}
         self.prsByItem = {}
 
-    def ghProgressMethod(self, message=None):
+    def progressMethod(self, message=None):
         message = message if message else self
         logging.info(message)
         slicer.util.showStatusMessage(message)
         slicer.app.processEvents(qt.QEventLoop.ExcludeUserInputEvents)
 
     def setupLogic(self):
-        self.logic = MorphoDepotLogic(ghProgressMethod=self.ghProgressMethod)
+        self.logic = MorphoDepotLogic(progressMethod=self.progressMethod)
 
     def setup(self) -> None:
         """Called when the user opens the module the first time and the widget is initialized."""
@@ -365,13 +365,13 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
-    def __init__(self, ghProgressMethod = None) -> None:
+    def __init__(self, progressMethod = None) -> None:
         """Called when the logic class is instantiated. Can be used for initializing member variables."""
         ScriptedLoadableModuleLogic.__init__(self)
         self.segmentationNode = None
         self.segmentationPath = None
         self.localRepo = None
-        self.ghProgressMethod = ghProgressMethod if ghProgressMethod else lambda *args : None
+        self.progressMethod = progressMethod if progressMethod else lambda *args : None
         self.gitExecutablesDir = None
         self.gitPath = None
         self.ghPath = None
@@ -463,14 +463,14 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         try:
             import pygbif
         except ModuleNotFoundError:
-            self.ghProgressMethod(f"Installing pygbif")
+            self.progressMethod(f"Installing pygbif")
             slicer.util.pip_install("pygbif")
             import pygbif
 
         try:
             import idigbio
         except ModuleNotFoundError:
-            self.ghProgressMethod(f"Installing idigbio")
+            self.progressMethod(f"Installing idigbio")
             slicer.util.pip_install("idigbio")
             import idigbio
 
@@ -485,9 +485,9 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             stderr = str(e)
             returnCode = -1
         if returnCode != 0:
-            self.ghProgressMethod(f"{command} failed to run, returned {returnCode}")
-            self.ghProgressMethod(stdout)
-            self.ghProgressMethod(stderr)
+            self.progressMethod(f"{command} failed to run, returned {returnCode}")
+            self.progressMethod(stdout)
+            self.progressMethod(stderr)
             return False
         return True
 
@@ -495,12 +495,12 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         """Check that git, and gh are available
         """
         if not (self.gitPath and self.ghPath):
-            self.ghProgressMethod("git/gh paths are not set")
+            self.progressMethod("git/gh paths are not set")
             return False
         if not (os.path.exists(self.gitPath) and os.path.exists(self.ghPath)):
-            self.ghProgressMethod("bad git/gh paths")
-            self.ghProgressMethod(f"git path is {self.gitPath}")
-            self.ghProgressMethod(f"gh path is {self.ghPath}")
+            self.progressMethod("bad git/gh paths")
+            self.progressMethod(f"git path is {self.gitPath}")
+            self.progressMethod(f"gh path is {self.ghPath}")
             return False
         if not self.checkCommand([self.gitPath, '--version']):
             return False
@@ -525,13 +525,13 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         else:
             fileName = 'install.sh'
 
-        self.ghProgressMethod("Downloading pixi")
+        self.progressMethod("Downloading pixi")
         url = f'https://pixi.sh/{fileName}'
         scriptPath = self.pixiInstallDir + "/" + fileName
         #slicer.util.downloadFile(url, scriptPath)
         downloadFileWorkaround(url, scriptPath)
 
-        self.ghProgressMethod("Running pixi installer")
+        self.progressMethod("Running pixi installer")
         updateEnvironment = {}
         if os.name == 'nt':
             command = ["powershell.exe",
@@ -550,14 +550,14 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         pixiPath = os.path.join(self.pixiInstallDir, "/bin/pixi") + self.executableExtension
         p = slicer.util.launchConsoleProcess([pixiPath, "init", self.pixiInstallDir], updateEnvironment=updateEnvironment)
         logging.info(str(p.communicate()))
-        self.ghProgressMethod("Adding git")
+        self.progressMethod("Adding git")
         p = slicer.util.launchConsoleProcess([pixiPath, "add", "--manifest-path", self.pixiInstallDir, "git"], updateEnvironment=updateEnvironment)
         logging.info(str(p.communicate()))
-        self.ghProgressMethod("Adding gh")
+        self.progressMethod("Adding gh")
         p = slicer.util.launchConsoleProcess([pixiPath, "add", "--manifest-path", self.pixiInstallDir, "gh"], updateEnvironment=updateEnvironment)
         logging.info(str(p.communicate()))
 
-        self.ghProgressMethod("Importing GitPython")
+        self.progressMethod("Importing GitPython")
         self.importGitPython()
 
         tempRepoDir = os.path.join(slicer.app.temporaryPath, "/_MorphoDepot_temp_git")
@@ -568,7 +568,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         tempRepo.config_writer(config_level="global").set_value("user", "email", email).release()
         shutil.rmtree(tempRepoDir)
 
-        self.ghProgressMethod("Installation complete")
+        self.progressMethod("Installation complete")
 
     @gitEnvironmentDecorator
     def gh(self, command):
@@ -583,7 +583,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             commandList = command
         else:
             logging.error("command must be string or list")
-        self.ghProgressMethod(" ".join(commandList))
+        self.progressMethod(" ".join(commandList))
         fullCommandList = [self.ghPath] + commandList
 
         environment = {}
@@ -614,7 +614,9 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             logging.error("gh command failed:")
             logging.error(commandList)
             logging.error(result)
-        self.ghProgressMethod(f"gh command finished: {result}")
+            self.progressMethod(f"gh command error: {result}")
+            return None
+        self.progressMethod(f"gh command finished: {result}")
         return result[0]
 
     def morphoRepos(self):
@@ -659,7 +661,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
     @gitEnvironmentDecorator
     def loadIssue(self, issue, repoDirectory):
-        self.ghProgressMethod(f"Loading issue {issue} into {repoDirectory}")
+        self.progressMethod(f"Loading issue {issue} into {repoDirectory}")
         issueNumber = issue['number']
         branchName=f"issue-{issueNumber}"
         sourceRepository = issue['repository']['nameWithOwner']
@@ -704,7 +706,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         branchName = pr['title']
         repositoryName = f"{pr['author']['login']}/{pr['repository']['name']}"
         localDirectory = f"{repoDirectory}/{pr['repository']['name']}-{branchName}"
-        self.ghProgressMethod(f"Loading issue {repositoryName} into {localDirectory}")
+        self.progressMethod(f"Loading issue {repositoryName} into {localDirectory}")
 
         if not os.path.exists(localDirectory):
             self.gh(f"repo clone {repositoryName} {localDirectory}")
@@ -716,7 +718,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         try:
             self.localRepo.remotes.origin.pull()
         except self.git.exc.GitCommandError:
-            self.ghProgressMethod(f"Error pulling origin")
+            self.progressMethod(f"Error pulling origin")
             return False
 
         self.loadFromLocalRepository()
@@ -727,7 +729,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         branchName = self.localRepo.active_branch.name
         upstreamNameWithOwner = self.nameWithOwner("upstream")
 
-        self.ghProgressMethod(f"Loading {branchName} into {localDirectory}")
+        self.progressMethod(f"Loading {branchName} into {localDirectory}")
 
         try:
             colorPath = glob.glob(f"{localDirectory}/*.csv")[0]
@@ -737,7 +739,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 colorPath = glob.glob(f"{localDirectory}/*.ctbl")[0]
                 colorNode = slicer.util.loadColorTable(colorPath)
             except IndexError:
-                self.ghProgressMethod(f"No color table found")
+                self.progressMethod(f"No color table found")
 
         # TODO: move from single volume file to segmentation specification json
         # TODO: save checksum in source_volume file to verify when downloading later

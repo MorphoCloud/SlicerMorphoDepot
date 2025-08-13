@@ -793,6 +793,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
     def issuePR(self, role="segmenter"):
         """Find the issue for the issue currently being worked on or None if there isn't one"""
+        if not self.localRepo:
+            return None
         branchName = self.localRepo.active_branch.name
         upstreamNameWithOwner = self.nameWithOwner("upstream")
         upstreamOwner = upstreamNameWithOwner.split("/")[0]

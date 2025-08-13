@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>325</width>
+    <width>365</width>
     <height>1004</height>
    </rect>
   </property>
@@ -63,7 +63,7 @@
         </property>
        </widget>
       </item>
-      <item row="3" column="0">
+      <item row="10" column="0">
        <widget class="QPushButton" name="requestChangesButton">
         <property name="enabled">
          <bool>true</bool>
@@ -76,7 +76,7 @@
         </property>
        </widget>
       </item>
-      <item row="4" column="0">
+      <item row="10" column="1">
        <widget class="QPushButton" name="approveButton">
         <property name="enabled">
          <bool>true</bool>

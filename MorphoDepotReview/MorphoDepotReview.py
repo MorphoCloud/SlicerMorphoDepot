@@ -95,9 +95,9 @@ class MorphoDepotReviewWidget(ScriptedLoadableModuleWidget, VTKObservationMixin,
 
     def enter(self):
         moduleEnabled = self.checkModuleEnabled()
-        self.ui.prCollapsibleButton.enabled = moduleEnabled
         self.ui.prsCollapsibleButton.enabled = moduleEnabled
         self.ui.refreshButton.enabled = moduleEnabled
+        self.ui.prCollapsibleButton.enabled = self.logic.issuePR(role="reviewer")
 
     def updatePRList(self):
         slicer.util.showStatusMessage(f"Updating PRs")

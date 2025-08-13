@@ -108,7 +108,7 @@ class EnableModuleMixin:
                     slicer.util.messageBox(msg)
                     print(f"Exception: {e}")
                     traceback.print_exc(file=sys.stderr)
-        return logic.ghPath
+        return logic.ghExecutablePath
 
     def offerPythonInstallation(self):
         msg = "Extra python packages (idigbio and pygbif) are required."
@@ -141,7 +141,7 @@ class EnableModuleMixin:
                 slicer.util.messageBox(msg)
                 return False
         else:
-            if not (moduleEnabled and self.logic.git and self.logic.gitPath and self.logic.ghPath):
+            if not (moduleEnabled and self.logic.git and self.logic.gitExecutablePath and self.logic.ghExecutablePath):
                 moduleEnabled = moduleEnabled and self.offerGitInstallation()
         moduleEnabled = moduleEnabled and (self.logic.git is not None)
         return moduleEnabled
@@ -192,9 +192,9 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         repoDir = os.path.normpath(self.logic.localRepositoryDirectory())
         self.ui.repoDirectory.currentPath = repoDir
 
-        self.ui.gitPath.currentPath = os.path.normpath(self.logic.gitPath) if self.logic.gitPath else ""
+        self.ui.gitPath.currentPath = os.path.normpath(self.logic.gitExecutablePath) if self.logic.gitExecutablePath else ""
         self.ui.gitPath.toolTip = "Restart Slicer after setting new path"
-        self.ui.ghPath.currentPath = os.path.normpath(self.logic.ghPath) if self.logic.ghPath else ""
+        self.ui.ghPath.currentPath = os.path.normpath(self.logic.ghExecutablePath) if self.logic.ghExecutablePath else ""
         self.ui.ghPath.toolTip = "Restart Slicer after setting new path"
 
         self.ui.forkManagementCollapsibleButton.enabled = False
@@ -373,8 +373,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.localRepo = None
         self.progressMethod = progressMethod if progressMethod else lambda *args : None
         self.gitExecutablesDir = None
-        self.gitPath = None
-        self.ghPath = None
+        self.gitExecutablePath = None
+        self.ghExecutablePath = None
         self.usingSystemGit = True
 
         self.executableExtension = '.exe' if os.name == 'nt' else ''
@@ -393,26 +393,26 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         if not ghPath or ghPath == "" or ghPath == ".":
             ghPath = shutil.which("gh")
         if gitPath and ghPath:
-            self.gitPath = gitPath
-            self.ghPath = ghPath
+            self.gitExecutablePath = gitPath
+            self.ghExecutablePath = ghPath
         else:
             # otherwise define where we expect to find git and gh after installation
             if not MorphoDepot.requireSystemGit:
                 if os.name == 'nt':
                     self.gitExecutablesDir = os.path.join(self.pixiInstallDir, "/.pixi/envs/default/Library/bin")
-                    self.gitPath = os.path.join(self.gitExecutablesDir, "/git.exe")
-                    self.ghPath = os.path.join(self.pixiInstallDir, "/.pixi/envs/default/Scripts/gh.exe")
+                    self.gitExecutablePath = os.path.join(self.gitExecutablesDir, "/git.exe")
+                    self.ghExecutablePath = os.path.join(self.pixiInstallDir, "/.pixi/envs/default/Scripts/gh.exe")
                 else:
                     self.gitExecutablesDir = os.path.join(self.pixiInstallDir, "/.pixi/envs/default/bin")
-                    self.gitPath = os.path.join(self.gitExecutablesDir, "/git")
-                    self.ghPath = os.path.join(self.pixiInstallDir, "/.pixi/envs/default/bin/gh")
+                    self.gitExecutablePath = os.path.join(self.gitExecutablesDir, "/git")
+                    self.ghExecutablePath = os.path.join(self.pixiInstallDir, "/.pixi/envs/default/bin/gh")
                 self.usingSystemGit = False
 
-        qt.QSettings().setValue("MorphoDepot/gitPath", self.gitPath)
-        qt.QSettings().setValue("MorphoDepot/ghPath", self.ghPath)
+        qt.QSettings().setValue("MorphoDepot/gitPath", self.gitExecutablePath)
+        qt.QSettings().setValue("MorphoDepot/ghPath", self.ghExecutablePath)
 
         self.git = None
-        if self.gitPath and os.path.exists(self.gitPath):
+        if self.gitExecutablePath and os.path.exists(self.gitExecutablePath):
             self.importGitPython()
 
     def importGitPython(self):
@@ -420,9 +420,9 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         # we specify the executable but also set it explicitly so that
         # we know we are using our download in case it has already been
         # imported elsewhere and found a different git
-        os.environ['GIT_PYTHON_GIT_EXECUTABLE'] = self.gitPath
+        os.environ['GIT_PYTHON_GIT_EXECUTABLE'] = self.gitExecutablePath
         import git
-        git.refresh(path=self.gitPath)
+        git.refresh(path=self.gitExecutablePath)
         self.git = git
         del os.environ['GIT_PYTHON_GIT_EXECUTABLE']
 
@@ -494,17 +494,17 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     def checkGitDependencies(self):
         """Check that git, and gh are available
         """
-        if not (self.gitPath and self.ghPath):
+        if not (self.gitExecutablePath and self.ghExecutablePath):
             self.progressMethod("git/gh paths are not set")
             return False
-        if not (os.path.exists(self.gitPath) and os.path.exists(self.ghPath)):
+        if not (os.path.exists(self.gitExecutablePath) and os.path.exists(self.ghExecutablePath)):
             self.progressMethod("bad git/gh paths")
-            self.progressMethod(f"git path is {self.gitPath}")
-            self.progressMethod(f"gh path is {self.ghPath}")
+            self.progressMethod(f"git path is {self.gitExecutablePath}")
+            self.progressMethod(f"gh path is {self.ghExecutablePath}")
             return False
-        if not self.checkCommand([self.gitPath, '--version']):
+        if not self.checkCommand([self.gitExecutablePath, '--version']):
             return False
-        if not self.checkCommand([self.ghPath, 'auth', 'status']):
+        if not self.checkCommand([self.ghExecutablePath, 'auth', 'status']):
             return False
         return True
 
@@ -574,7 +574,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     def gh(self, command):
         """Execute `gh` command.  Multiline input string accepted for readablity.
         Do not include `gh` in the command string"""
-        if not self.ghPath or self.ghPath == "":
+        if not self.ghExecutablePath or self.ghExecutablePath == "":
             logging.error("Error, gh not found")
             return "Error, gh not found"
         if command.__class__() == "":
@@ -584,19 +584,19 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         else:
             logging.error("command must be string or list")
         self.progressMethod(" ".join(commandList))
-        fullCommandList = [self.ghPath] + commandList
+        fullCommandList = [self.ghExecutablePath] + commandList
 
         environment = {}
         if self.usingSystemGit:
             if not self.gitExecutablesDir:
-                completedProcess = subprocess.run([self.gitPath, "--exec-path"], capture_output=True)
+                completedProcess = subprocess.run([self.gitExecutablePath, "--exec-path"], capture_output=True)
                 self.gitExecutablesDir = completedProcess.stdout.strip()
                 try:
                     self.gitExecutablesDir = self.gitExecutablesDir.decode() # needed on windows
                 except (UnicodeDecodeError, AttributeError):
                     pass
                 environment = {
-                    "PATH" : os.path.dirname(self.gitPath),
+                    "PATH" : os.path.dirname(self.gitExecutablePath),
                     "GIT_EXEC_PATH": self.gitExecutablesDir
                 }
         else:
@@ -739,7 +739,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 colorPath = glob.glob(f"{localDirectory}/*.ctbl")[0]
                 colorNode = slicer.util.loadColorTable(colorPath)
             except IndexError:
-                self.progressMethod(f"No color table found")
+                self.ghProgressMethod(f"No color table found")
 
         # TODO: move from single volume file to segmentation specification json
         # TODO: save checksum in source_volume file to verify when downloading later

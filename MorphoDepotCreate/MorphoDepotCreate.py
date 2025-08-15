@@ -474,7 +474,7 @@ class FormSpeciesQuestion(FormTextQuestion):
         self.searchDialog = None
 
     def _setSpeciesInfoLabel(self, result):
-        requiredKeys = ['matchType', 'rank', 'canonicalName', 'kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species']        
+        requiredKeys = ['matchType', 'rank', 'canonicalName', 'kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species']
         for key in requiredKeys:
             if key not in result:
                 result[key] = "missing"

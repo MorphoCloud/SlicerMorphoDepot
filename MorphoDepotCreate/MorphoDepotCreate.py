@@ -1,4 +1,5 @@
 import qt
+import re
 
 import slicer
 from slicer.i18n import tr as _
@@ -93,11 +94,22 @@ class MorphoDepotCreateWidget(ScriptedLoadableModuleWidget, MorphoDepot.EnableMo
         if self.ui.inputSelector.currentNode() == None or self.colorSelector.currentNode() == None:
             slicer.util.errorDisplay("Need to select volume and color table")
             return
+        sourceVolume = self.ui.inputSelector.currentNode()
+        colorTable = self.colorSelector.currentNode()
+
+        validGithubAsset = r'^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'
+        if re.fullmatch(validGithubAsset, sourceVolume.GetName()) is not None:
+            slicer.util.errorDisplay("Please rename volume.\n"
+                "Only alphanumerics, periods, hyphens and underscores accepted.")
+            return
+        if re.fullmatch(validGithubAsset, colorTable.GetName()) is not None:
+            slicer.util.errorDisplay("Please rename color table.\n"
+                "Only alphanumerics, periods, hyphens and underscores accepted.")
+            return
+
         slicer.util.showStatusMessage(f"Creating...")
         accessionData = self.accessionForm.accessionData()
         with slicer.util.tryWithErrorDisplay(_("Trouble creating repository"), waitCursor=True):
-            sourceVolume = self.ui.inputSelector.currentNode()
-            colorTable = self.colorSelector.currentNode()
             accessionData['scanDimensions'] = str(sourceVolume.GetImageData().GetDimensions())
             accessionData['scanSpacing'] = str(sourceVolume.GetSpacing())
             self.logic.createAccessionRepo(sourceVolume, colorTable, accessionData)
@@ -342,7 +354,6 @@ class MorphoDepotAccessionForm():
             self.sectionWidgets[section].show()
 
     def validateForm(self, arguments=None):
-        import re
 
         # first, update the visibility of dependent sections
         if self.questions["specimenSource"].answer() == "Commercially acquired":

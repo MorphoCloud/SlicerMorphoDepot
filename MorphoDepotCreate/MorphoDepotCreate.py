@@ -98,13 +98,14 @@ class MorphoDepotCreateWidget(ScriptedLoadableModuleWidget, MorphoDepot.EnableMo
         colorTable = self.colorSelector.currentNode()
 
         validGithubAsset = r'^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'
-        if re.fullmatch(validGithubAsset, sourceVolume.GetName()) is not None:
+        if re.fullmatch(validGithubAsset, sourceVolume.GetName()) is None:
             slicer.util.errorDisplay("Please rename volume.\n"
                 "Only alphanumerics, periods, hyphens and underscores accepted.")
             return
-        if re.fullmatch(validGithubAsset, colorTable.GetName()) is not None:
+        if re.fullmatch(validGithubAsset, colorTable.GetName()) is None:
             slicer.util.errorDisplay("Please rename color table.\n"
-                "Only alphanumerics, periods, hyphens and underscores accepted.")
+                "Only alphanumerics, periods, hyphens and underscores accepted.\n"
+                "Use the 'All nodes' tab of the Data module to access the color table and right-click to rename.")
             return
 
         slicer.util.showStatusMessage(f"Creating...")

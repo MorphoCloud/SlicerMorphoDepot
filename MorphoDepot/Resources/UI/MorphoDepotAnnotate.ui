@@ -18,60 +18,6 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="ctkCollapsibleButton" name="configureCollapsibleButton">
-     <property name="text">
-      <string>Configuration</string>
-     </property>
-     <property name="collapsed">
-      <bool>false</bool>
-     </property>
-     <layout class="QVBoxLayout" name="verticalLayout_4">
-      <item>
-       <widget class="QLabel" name="label_3">
-        <property name="text">
-         <string>Local repository directory</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="ctkPathLineEdit" name="repoDirectory">
-        <property name="sizeAdjustPolicy">
-         <enum>ctkPathLineEdit::AdjustToContents</enum>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="gitlabel">
-        <property name="text">
-         <string>Path to git executable</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="ctkPathLineEdit" name="gitPath">
-        <property name="sizeAdjustPolicy">
-         <enum>ctkPathLineEdit::AdjustToContents</enum>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QLabel" name="ghlabel">
-        <property name="text">
-         <string>Path to gh executable</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="ctkPathLineEdit" name="ghPath">
-        <property name="sizeAdjustPolicy">
-         <enum>ctkPathLineEdit::AdjustToContents</enum>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </widget>
-   </item>
-   <item>
     <widget class="QPushButton" name="refreshButton">
      <property name="text">
       <string>Refresh Github</string>
@@ -199,11 +145,6 @@
    <extends>QWidget</extends>
    <header>ctkCollapsibleButton.h</header>
    <container>1</container>
-  </customwidget>
-  <customwidget>
-   <class>ctkPathLineEdit</class>
-   <extends>QWidget</extends>
-   <header>ctkPathLineEdit.h</header>
   </customwidget>
   <customwidget>
    <class>qMRMLWidget</class>

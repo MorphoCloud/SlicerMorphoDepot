@@ -6,6 +6,7 @@ import logging
 import os
 import shutil
 import platform
+import re
 import requests
 import subprocess
 import sys
@@ -731,7 +732,7 @@ class MorphoDepotAccessionForm():
         valid = valid and self.questions["redistributionAcknowledgement"].answer() != ""
         valid = valid and self.questions["license"].answer() != ""
         valid = valid and self.questions["githubRepoName"].answer() != ""
-        repoNameRegex = r"^[a-zA-Z][a-zA-Z0-9-_.]*$"
+        repoNameRegex = r"^(?:([a-zA-Z\d]+(?:-[a-zA-Z\d]+)*)/)?([\w.-]+)$"
         valid = valid and (re.match(repoNameRegex, self.questions["githubRepoName"].answer()) != None)
         self.validationCallback(valid)
 

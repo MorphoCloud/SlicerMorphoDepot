@@ -443,13 +443,13 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.logic.requestChanges(message)
         self.reviewUI.reviewMessage.plainText = ""
         slicer.util.showStatusMessage(f"Changes requested")
-        self.updatePRList()
+        self.updateReviewPRList()
 
     def onApprove(self):
         slicer.util.showStatusMessage(f"Approving")
         prURL = self.logic.approvePR()
         self.reviewUI.reviewMessage.plainText = ""
-        self.updatePRList()
+        self.updateReviewPRList()
 
 class MorphoDepotAccessionForm():
     """Customized interface to collect data about MorphoDepot accessions"""

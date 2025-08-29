@@ -205,6 +205,9 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.tabWidget.addTab(uiWidget, "Search")
         self.searchUI = slicer.util.childWidgetVariables(uiWidget)
 
+        # restore last tab index
+        tabIndex = slicer.util.settingsValue("MorphoDepot/tabIndex", 0, converter=int)
+        self.tabWidget.currentIndex = tabIndex
 
         # Set scene in MRML widgets. Make sure that in Qt designer the top-level qMRMLWidget's
         # "mrmlSceneChanged(vtkMRMLScene*)" signal in is connected to each MRML widget's.
@@ -240,6 +243,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.reviewUI.prCollapsibleButton.enabled = False
 
         # Connections
+        self.tabWidget.currentChanged.connect(self.onCurrentTabChanged)
         self.configureUI.repoDirectory.comboBox().connect("currentTextChanged(QString)", self.onRepoDirectoryChanged)
         self.configureUI.gitPath.comboBox().connect("currentTextChanged(QString)", self.onGitPathChanged)
         self.configureUI.ghPath.comboBox().connect("currentTextChanged(QString)", self.onGhPathChanged)
@@ -271,6 +275,9 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.reviewUI.prsCollapsibleButton.enabled = moduleEnabled
         self.reviewUI.refreshButton.enabled = moduleEnabled
         self.reviewUI.prCollapsibleButton.enabled = self.logic.issuePR(role="reviewer")
+
+    def onCurrentTabChanged(self,index):
+        qt.QSettings().setValue("MorphoDepot/tabIndex", index)
 
     # Create
     def onCreateRepository(self):

@@ -1,45 +1,58 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
- <class>MorphoDepot</class>
- <widget class="qMRMLWidget" name="MorphoDepot">
+ <class>MorphoDepotCreate</class>
+ <widget class="qMRMLWidget" name="MorphoDepotCreate">
   <property name="geometry">
    <rect>
     <x>0</x>
     <y>0</y>
     <width>325</width>
-    <height>1004</height>
+    <height>879</height>
    </rect>
-  </property>
-  <property name="sizePolicy">
-   <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
-    <horstretch>0</horstretch>
-    <verstretch>0</verstretch>
-   </sizepolicy>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <spacer name="verticalSpacer">
-     <property name="orientation">
-      <enum>Qt::Vertical</enum>
+    <widget class="QPushButton" name="refreshButton">
+     <property name="text">
+      <string>Refresh Github</string>
      </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>40</height>
-      </size>
+    </widget>
+   </item>
+   <item>
+    <widget class="ctkCollapsibleButton" name="searchCollapsibleButton">
+     <property name="text">
+      <string>Search Terms</string>
      </property>
-    </spacer>
+     <layout class="QVBoxLayout" name="searchLayout">
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="ctkCollapsibleButton" name="resultsCollapsibleButton">
+     <property name="sizePolicy">
+      <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
+       <horstretch>0</horstretch>
+       <verstretch>0</verstretch>
+      </sizepolicy>
+     </property>
+     <property name="text">
+      <string>Results</string>
+     </property>
+     <layout class="QVBoxLayout" name="resultsLayout">
+     </layout>
+    </widget>
    </item>
   </layout>
  </widget>
  <customwidgets>
   <customwidget>
-   <class>qMRMLWidget</class>
+   <class>ctkCollapsibleButton</class>
    <extends>QWidget</extends>
-   <header>qMRMLWidget.h</header>
+   <header>ctkCollapsibleButton.h</header>
    <container>1</container>
   </customwidget>
  </customwidgets>
  <resources/>
- <connections/>
+ <connections>
+ </connections>
 </ui>

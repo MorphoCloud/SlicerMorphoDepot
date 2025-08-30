@@ -242,6 +242,13 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         # Review
         self.reviewUI.prCollapsibleButton.enabled = False
 
+        # Search
+        self.searchUI.searchForm = MorphoDepotSearchForm()
+        self.searchUI.searchCollapsibleButton.layout().addWidget(self.searchUI.searchForm.topWidget)
+        self.searchUI.searchResults = qt.QListWidget()
+        self.searchUI.resultsCollapsibleButton.layout().addWidget(self.searchUI.searchResults)
+
+
         # Connections
         self.tabWidget.currentChanged.connect(self.onCurrentTabChanged)
         self.configureUI.repoDirectory.comboBox().connect("currentTextChanged(QString)", self.onRepoDirectoryChanged)
@@ -260,6 +267,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.reviewUI.prList.itemDoubleClicked.connect(self.onPRDoubleClicked)
         self.reviewUI.requestChangesButton.clicked.connect(self.onRequestChanges)
         self.reviewUI.approveButton.clicked.connect(self.onApprove)
+        self.searchUI.refreshButton.clicked.connect(self.onRefreshSearch)
 
     def cleanup(self) -> None:
         """Called when the application closes and the module widget is destroyed."""
@@ -459,6 +467,26 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         prURL = self.logic.approvePR()
         self.reviewUI.reviewMessage.plainText = ""
         self.updateReviewPRList()
+
+    # Search
+    def onRefreshSearch(self):
+        self.logic.refreshSearchCache()
+        criteria = self.searchUI.searchForm.criteria()
+        results = self.logic.search(criteria)
+        self.updateSearchResults(results)
+
+    def updateSearchResults(self, results):
+        slicer.util.showStatusMessage(f"Updating search results")
+        self.searchUI.searchResults.clear()
+        self.searchResultsByItem = {}
+        for nameWithOwner, repoData in results.items():
+            resultTitle = f"{nameWithOwner}"
+            item = qt.QListWidgetItem(resultTitle)
+            self.searchResultsByItem[item] = repoData
+            self.searchUI.searchResults.addItem(item)
+        slicer.util.showStatusMessage(f"{len(results.keys())} matching repositories")
+
+
 
 class MorphoDepotAccessionForm():
     """Customized interface to collect data about MorphoDepot accessions"""
@@ -880,6 +908,22 @@ class FormSpeciesQuestion(FormTextQuestion):
 
     def answer(self):
         return self.answerText.text
+
+
+class MorphoDepotSearchForm():
+    """Customized interface to specify MorphoDepot searches"""
+
+    def __init__(self):
+        self.form = qt.QWidget()
+        layout = qt.QVBoxLayout()
+        self.form.setLayout(layout)
+        self.scrollArea = qt.QScrollArea()
+        self.scrollArea.setWidget(self.form)
+        self.scrollArea.setWidgetResizable(True)
+        self.topWidget = self.scrollArea
+
+    def criteria(self):
+        return {"text": "*"}
 
 
 #
@@ -1546,6 +1590,44 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
         repo.index.add([f"{repoDir}/source_volume"])
         repo.index.commit("Add source file url file")
         repo.remote(name="origin").push()
+
+    #
+    # Search
+    #
+
+    def refreshSearchCache(self):
+        """Gets accession data from all repositories"""
+        repos = self.morphoRepos()
+
+        repoDirectory = os.path.normpath(slicer.util.settingsValue("MorphoDepot/repoDirectory", "") or "")
+
+        searchDirectory = f"{repoDirectory}/MorphoDepotSearchCache"
+        os.makedirs(searchDirectory, exist_ok=True)
+
+        self.repoDataByNameWithOwner = {}
+
+        for repo in repos:
+            repoName = repo['name']
+            ownerLogin = repo['owner']['login']
+            nameWithOwner = f"{repoName}-{ownerLogin}"
+            filePath = f"{searchDirectory}/{nameWithOwner}-MorphoDepotAccession.json"
+            if os.path.exists(filePath):
+                fp = open(filePath)
+                self.repoDataByNameWithOwner[nameWithOwner] = json.loads(fp.read())
+            else:
+                urlPrefix = "https://raw.githubusercontent.com"
+                urlSuffix = "refs/heads/main/MorphoDepotAccession.json"
+                accessionURL = f"{urlPrefix}/{ownerLogin}/{repoName}/{urlSuffix}"
+                request = requests.get(accessionURL)
+                if request.status_code == 200:
+                    fp = open(filePath, "w")
+                    fp.write(request.text)
+                    fp.close()
+                    self.repoDataByNameWithOwner[nameWithOwner] = json.loads(request.text)
+
+    def search(self, criteria):
+        results = self.repoDataByNameWithOwner
+        return results
 
 
 #

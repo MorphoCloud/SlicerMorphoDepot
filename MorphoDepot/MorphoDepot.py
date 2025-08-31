@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+import fnmatch
 import glob
 import json
 import locale
@@ -15,6 +16,7 @@ from typing import Annotated, Optional
 
 import qt
 
+import ctk
 import slicer
 from slicer.i18n import tr as _
 from slicer.i18n import translate
@@ -243,8 +245,9 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.reviewUI.prCollapsibleButton.enabled = False
 
         # Search
-        self.searchUI.searchForm = MorphoDepotSearchForm()
+        self.searchUI.searchForm = MorphoDepotSearchForm(updateCallback=self.doSearch)
         self.searchUI.searchCollapsibleButton.layout().addWidget(self.searchUI.searchForm.topWidget)
+        self.searchUI.searchForm.topWidget.enabled = False
         self.searchUI.searchResults = qt.QListWidget()
         self.searchUI.resultsCollapsibleButton.layout().addWidget(self.searchUI.searchResults)
 
@@ -471,6 +474,10 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
     # Search
     def onRefreshSearch(self):
         self.logic.refreshSearchCache()
+        self.searchUI.searchForm.topWidget.enabled = True
+        self.doSearch()
+
+    def doSearch(self):
         criteria = self.searchUI.searchForm.criteria()
         results = self.logic.search(criteria)
         self.updateSearchResults(results)
@@ -485,7 +492,6 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             self.searchResultsByItem[item] = repoData
             self.searchUI.searchResults.addItem(item)
         slicer.util.showStatusMessage(f"{len(results.keys())} matching repositories")
-
 
 
 class MorphoDepotAccessionForm():
@@ -913,7 +919,10 @@ class FormSpeciesQuestion(FormTextQuestion):
 class MorphoDepotSearchForm():
     """Customized interface to specify MorphoDepot searches"""
 
-    def __init__(self):
+    questionsToIgnore = ['iDigBioURL', 'species', 'redistributionAcknowledgement', "githubRepoName"]
+
+    def __init__(self, updateCallback=lambda : None):
+        self.updateCallback = updateCallback
         self.form = qt.QWidget()
         layout = qt.QVBoxLayout()
         self.form.setLayout(layout)
@@ -921,9 +930,42 @@ class MorphoDepotSearchForm():
         self.scrollArea.setWidget(self.form)
         self.scrollArea.setWidgetResizable(True)
         self.topWidget = self.scrollArea
+        self.searchFormLayout = qt.QFormLayout()
+        self.topWidget.setLayout(self.searchFormLayout)
+        self.searchBox = ctk.ctkSearchBox()
+        self.searchFormLayout.addRow(self.searchBox)
+        self.searchBox.textChanged.connect(self.updateCallback)
+
+        self.comboBoxesByQuestion = {}
+        questions = MorphoDepotAccessionForm.formQuestions
+        for question, questionData in questions.items():
+            if question not in MorphoDepotSearchForm.questionsToIgnore:
+                comboBox = ctk.ctkCheckableComboBox()
+                self.searchFormLayout.addRow(question, comboBox)
+                for option in questionData[1]:
+                    comboBox.addItem(option)
+                model = comboBox.checkableModel()
+                for row in range(model.rowCount()):
+                    index = model.index(row,0)
+                    comboBox.setCheckState(index, qt.Qt.Checked)
+                comboBox.checkedIndexesChanged.connect(self.updateCallback)
+                self.comboBoxesByQuestion[question] = comboBox
 
     def criteria(self):
-        return {"text": "*"}
+        criteria = {"freeText": self.searchBox.text}
+        questions = MorphoDepotAccessionForm.formQuestions
+        for question, questionData in questions.items():
+            if question not in MorphoDepotSearchForm.questionsToIgnore:
+                comboBox = self.comboBoxesByQuestion[question]
+                model = comboBox.checkableModel()
+                criteria[question] = []
+                for row in range(model.rowCount()):
+                    index = model.index(row,0)
+                    if comboBox.checkState(index) == qt.Qt.Checked:
+                        criteria[question].append(questionData[1][row])
+        return criteria
+
+
 
 
 #
@@ -979,6 +1021,9 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.gitExecutablePath = None
         self.ghExecutablePath = None
         self.usingSystemGit = True
+
+        # for Search
+        self.repoDataByNameWithOwner = {}
 
         self.executableExtension = '.exe' if os.name == 'nt' else ''
         modulePath = os.path.split(slicer.modules.morphodepot.path)[0]
@@ -1625,8 +1670,38 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
                     fp.close()
                     self.repoDataByNameWithOwner[nameWithOwner] = json.loads(request.text)
 
+
     def search(self, criteria):
-        results = self.repoDataByNameWithOwner
+        if self.repoDataByNameWithOwner == {}:
+            return {}
+
+        excludedRepos = set()
+        for nameWithOwner, repoData in self.repoDataByNameWithOwner.items():
+            for question in criteria:
+                if question in repoData:
+                    repoValue = repoData[question][1]
+                    if repoValue.__class__() == []:
+                        valueInCriterion = False
+                        for value in repoValue:
+                            if value in criteria[question]:
+                                valueInCriterion = True
+                            if not valueInCriterion:
+                                excludedRepos.add(nameWithOwner)
+                    else:
+                        if repoValue != "" and repoValue not in criteria[question]:
+                            excludedRepos.add(nameWithOwner)
+        matchingRepos = set()
+        textFields = ["githubRepoName", "species"]
+        for nameWithOwner, repoData in self.repoDataByNameWithOwner.items():
+            for textField in textFields:
+                if textField in repoData:
+                    if fnmatch.fnmatch(repoData[textField][1], f"*{criteria['freeText']}*"):
+                        matchingRepos.add(nameWithOwner)
+
+        results = {}
+        for nameWithOwner in matchingRepos:
+            if nameWithOwner not in excludedRepos:
+                results[nameWithOwner] = self.repoDataByNameWithOwner[nameWithOwner]
         return results
 
 

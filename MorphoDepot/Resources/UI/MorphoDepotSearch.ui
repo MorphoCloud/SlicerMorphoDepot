@@ -14,7 +14,7 @@
    <item>
     <widget class="QPushButton" name="refreshButton">
      <property name="text">
-      <string>Refresh Github</string>
+      <string>Fetch Repository Data from Github</string>
      </property>
     </widget>
    </item>

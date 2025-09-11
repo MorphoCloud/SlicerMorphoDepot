@@ -165,6 +165,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.prsByItem = {}
         self.segmentMTimesByID = {}
         self.segmentNamesByID = {}
+        self.searchResultsByItem = {}
 
     def progressMethod(self, message=None):
         message = message if message else self
@@ -247,9 +248,31 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.configureUI.adminModeCheckBox.checked = adminMode
 
         # Create
+        self.createUI.inputSelector = slicer.qMRMLNodeComboBox()
+        self.createUI.inputSelector.nodeTypes = ["vtkMRMLScalarVolumeNode"]
+        self.createUI.inputSelector.setMRMLScene(slicer.mrmlScene)
+        self.createUI.inputSelector.showChildNodeTypes = False
+        self.createUI.inputSelector.addEnabled = False
+        self.createUI.inputSelector.removeEnabled = False
+        self.createUI.inputSelector.noneDisplay = "Select a source volume (required)"
+        self.createUI.inputSelector.toolTip = "Pick the source volume for the repository."
+
         self.createUI.colorSelector = slicer.qMRMLColorTableComboBox()
         self.createUI.colorSelector.setMRMLScene(slicer.mrmlScene)
-        self.createUI.inputsCollapsibleButton.layout().addRow("Color table:", self.createUI.colorSelector)
+        self.createUI.colorSelector.noneDisplay = "Select a color table (required)"
+
+        self.createUI.segmentationSelector = slicer.qMRMLNodeComboBox()
+        self.createUI.segmentationSelector.nodeTypes = ["vtkMRMLSegmentationNode"]
+        self.createUI.segmentationSelector.setMRMLScene(slicer.mrmlScene)
+        self.createUI.segmentationSelector.noneEnabled = True
+        self.createUI.segmentationSelector.noneDisplay = "Select a baseline segmentation (optional)"
+        self.createUI.segmentationSelector.toolTip = "Pick an baseline segmentation (optional)."
+
+        formLayout = self.createUI.inputsCollapsibleButton.layout()
+        formLayout.addRow("Source volume:", self.createUI.inputSelector)
+        formLayout.addRow("Color table:", self.createUI.colorSelector)
+        formLayout.addRow("Baseline segmentation:", self.createUI.segmentationSelector)
+
         self.createUI.accessionLayout = qt.QVBoxLayout()
         self.createUI.accessionCollapsibleButton.setLayout(self.createUI.accessionLayout)
         self.createUI.createRepository.enabled = False
@@ -271,9 +294,14 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.searchUI.searchForm = MorphoDepotSearchForm(updateCallback=self.doSearch)
         self.searchUI.searchCollapsibleButton.layout().addWidget(self.searchUI.searchForm.topWidget)
         self.searchUI.searchForm.topWidget.enabled = False
-        self.searchUI.searchResults = qt.QListWidget()
-        self.searchUI.resultsCollapsibleButton.layout().addWidget(self.searchUI.searchResults)
-
+        self.searchUI.resultsTable = qt.QTableView()
+        self.searchUI.resultsTable.setContextMenuPolicy(qt.Qt.CustomContextMenu)
+        self.searchUI.resultsTable.customContextMenuRequested.connect(self.onSearchResultsContextMenu)
+        self.searchUI.resultsModel = qt.QStandardItemModel()
+        self.searchUI.resultsTable.setModel(self.searchUI.resultsModel)
+        self.searchUI.resultsTable.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
+        self.searchUI.resultsTable.setEditTriggers(qt.QAbstractItemView.NoEditTriggers)
+        self.searchUI.resultsCollapsibleButton.layout().addWidget(self.searchUI.resultsTable)
 
         # Connections
         self.tabWidget.currentChanged.connect(self.onCurrentTabChanged)
@@ -299,6 +327,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.releaseUI.repoList.itemDoubleClicked.connect(self.onReleaseRepoDoubleClicked)
         self.releaseUI.makeReleaseButton.clicked.connect(self.onMakeRelease)
         self.releaseUI.openReleasePageButton.clicked.connect(self.onOpenReleasePage)
+        self.searchUI.resultsTable.doubleClicked.connect(self.onSearchResultsDoubleClicked)
         self.searchUI.refreshButton.clicked.connect(self.onRefreshSearch)
 
         # set initial visibility of admin tab
@@ -335,6 +364,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             slicer.util.errorDisplay("Need to select volume and color table")
             return
         sourceVolume = self.createUI.inputSelector.currentNode()
+        sourceSegmentation = self.createUI.segmentationSelector.currentNode()
         colorTable = self.createUI.colorSelector.currentNode()
 
         validGithubAsset = r'^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$'
@@ -353,7 +383,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         with slicer.util.tryWithErrorDisplay(_("Trouble creating repository"), waitCursor=True):
             accessionData['scanDimensions'] = str(sourceVolume.GetImageData().GetDimensions())
             accessionData['scanSpacing'] = str(sourceVolume.GetSpacing())
-            self.logic.createAccessionRepo(sourceVolume, colorTable, accessionData)
+            self.logic.createAccessionRepo(sourceVolume, colorTable, accessionData, sourceSegmentation)
         self.createUI.createRepository.enabled = False
         self.createUI.openRepository.enabled = True
 
@@ -625,6 +655,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
     def onRefreshSearch(self):
         slicer.util.showStatusMessage("Refreshing search cache...")
         self.logic.refreshSearchCache()
+        self.searchUI.searchForm.searchBox.setPlaceholderText("Search...")
         self.searchUI.searchForm.topWidget.enabled = True
         self.doSearch()
 
@@ -635,14 +666,102 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
 
     def updateSearchResults(self, results):
         slicer.util.showStatusMessage(f"Updating search results")
-        self.searchUI.searchResults.clear()
+        self.searchUI.resultsModel.clear()
         self.searchResultsByItem = {}
+        headers = ["Repository", "Owner", "Species", "Modality", "Spacing", "Dimensions"]
+        self.searchUI.resultsModel.setHorizontalHeaderLabels(headers)
         for nameWithOwner, repoData in results.items():
-            resultTitle = f"{nameWithOwner}"
-            item = qt.QListWidgetItem(resultTitle)
-            self.searchResultsByItem[item] = repoData
-            self.searchUI.searchResults.addItem(item)
+            nameWithOwnerSplit = nameWithOwner.split('-')
+            repoName = "-".join(nameWithOwnerSplit[:-1])
+            owner = nameWithOwnerSplit[-1]
+            species = repoData.get('species', [None, "N/A"])[1]
+            modality = repoData.get('modality', [None, "N/A"])[1]
+            
+            spacingText = "N/A"
+            spacingStr = repoData.get('scanSpacing')
+            if spacingStr:
+                try:
+                    # The string is a tuple representation like "(0.5, 0.5, 0.9)"
+                    spacingValues = [float(v) for v in spacingStr.strip("()").split(',')]
+                    formattedValues = [f"{v:.3g}" for v in spacingValues]
+                    spacingText = ", ".join(formattedValues)
+                except (ValueError, IndexError, TypeError):
+                    spacingText = "Invalid"
+
+            dimensionsText = "N/A"
+            dimensionsStr = repoData.get('scanDimensions')
+            if dimensionsStr:
+                try:
+                    # The string is a tuple representation like "(512, 512, 300)"
+                    dims = dimensionsStr.strip("()").split(',')
+                    dimensionsText = " x ".join([d.strip() for d in dims])
+                except:
+                    dimensionsText = "Invalid"
+
+            repoItem = qt.QStandardItem(repoName)
+            ownerItem = qt.QStandardItem(owner)
+            speciesItem = qt.QStandardItem(species)
+            modalityItem = qt.QStandardItem(modality)
+            spacingItem = qt.QStandardItem(spacingText)
+            dimensionsItem = qt.QStandardItem(dimensionsText)
+
+            # Store the full data in the first item of the row
+            repoItem.setData(repoData, qt.Qt.UserRole)
+            repoItem.setData(nameWithOwner, qt.Qt.UserRole + 1)
+
+            rowItems = [repoItem, ownerItem, speciesItem, modalityItem, spacingItem, dimensionsItem]
+            tooltipText = json.dumps(repoData, indent=2)
+
+            # Create a formatted HTML tooltip
+            tooltip_parts = [f"<b>{repoName}</b> by <b>{owner}</b><br><hr>"]
+            for key in MorphoDepotAccessionForm.formQuestions.keys():
+                if key in repoData:
+                    question_text, answer = repoData[key]
+                    answer_str = ", ".join(answer) if isinstance(answer, list) else str(answer)
+                    display_answer = answer_str if answer_str else "<i>Not provided</i>"
+                    tooltip_parts.append(f"<i>{question_text}</i><br>{display_answer}<br>")
+            tooltipText = "".join(tooltip_parts)
+
+            for item in rowItems:
+                item.setToolTip(tooltipText)
+
+            self.searchUI.resultsModel.appendRow(rowItems)
+
+        self.searchUI.resultsTable.resizeColumnsToContents()
         slicer.util.showStatusMessage(f"{len(results.keys())} matching repositories")
+
+    def onSearchResultsContextMenu(self, point):
+        index = self.searchUI.resultsTable.indexAt(point)
+        if not index.isValid():
+            return
+
+        item = self.searchUI.resultsModel.item(index.row(), 0)
+        repoData = item.data(qt.Qt.UserRole)
+        nameWithOwner = item.data(qt.Qt.UserRole + 1)
+        repoName, owner = nameWithOwner.split('-', 1)
+        fullRepoName = f"{owner}/{repoName}"
+
+        menu = qt.QMenu()
+        openRepoAction = menu.addAction("Open Repository Page")
+        previewAction = menu.addAction("Preview in Slicer")
+
+        action = menu.exec_(self.searchUI.resultsTable.mapToGlobal(point))
+
+        if action == openRepoAction:
+            qt.QDesktopServices.openUrl(qt.QUrl(f"https://github.com/{fullRepoName}"))
+        elif action == previewAction:
+            self.previewRepository(fullRepoName)
+
+    def onSearchResultsDoubleClicked(self, index):
+        """Handle double-click on search results table to preview repository."""
+        if not index.isValid():
+            return
+
+        item = self.searchUI.resultsModel.item(index.row(), 0)
+        nameWithOwner = item.data(qt.Qt.UserRole + 1)
+        repoName, owner = nameWithOwner.split('-', 1)
+        fullRepoName = f"{owner}/{repoName}"
+        self.previewRepository(fullRepoName)
 
     def onMakeRelease(self):
         slicer.util.showStatusMessage("Creating new release...")
@@ -652,6 +771,15 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.releaseUI.releaseCommentsEdit.plainText = ""
         self.updateCurrentVersionLabel()
         slicer.util.showStatusMessage("New release created. You can add more comments on the GitHub release page.")
+
+    def previewRepository(self, repoNameWithOwner):
+        """Clones a repository and loads its data for previewing."""
+        slicer.util.showStatusMessage(f"Previewing repository {repoNameWithOwner}...")
+        if slicer.util.confirmOkCancelDisplay("Close scene and load repository for preview?"):
+            slicer.mrmlScene.Clear()
+            with slicer.util.tryWithErrorDisplay("Failed to load repository", waitCursor=True):
+                self.logic.loadRepoForPreview(repoNameWithOwner)
+            slicer.util.showStatusMessage(f"Repository {repoNameWithOwner} loaded for preview.")
 
 class MorphoDepotAccessionForm():
     """Customized interface to collect data about MorphoDepot accessions"""
@@ -1094,6 +1222,7 @@ class MorphoDepotSearchForm():
         self.searchBox = ctk.ctkSearchBox()
         self.searchFormLayout.addRow(self.searchBox)
         self.searchBox.textChanged.connect(self.updateCallback)
+        self.searchBox.setPlaceholderText("Fetch repository data to search...")
 
         self.comboBoxesByQuestion = {}
         questions = MorphoDepotAccessionForm.formQuestions
@@ -1594,6 +1723,21 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.loadFromLocalRepository(remoteName="origin", configuration="release")
         return True
 
+    @gitEnvironmentDecorator
+    def loadRepoForPreview(self, repoNameWithOwner):
+        repoName = repoNameWithOwner.split('/')[1]
+        localDirectory = os.path.join(self.localRepositoryDirectory(), repoName)
+
+        if not os.path.exists(localDirectory):
+            self.gh(f"repo clone {repoNameWithOwner} {localDirectory}")
+
+        self.localRepo = self.git.Repo(localDirectory)
+        self.localRepo.remotes.origin.fetch()
+        self.localRepo.git.checkout("main")
+        self.localRepo.remotes.origin.pull()
+        self.loadFromLocalRepository(remoteName="origin", configuration="preview")
+        return True
+
     def loadFromLocalRepository(self, remoteName="upstream", configuration="segment"):
         localDirectory = self.localRepo.working_dir
         branchName = self.localRepo.active_branch.name
@@ -1639,16 +1783,17 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             editorWidget = slicer.modules.segmenteditor.widgetRepresentation().self()
 
             self.segmentationPath = os.path.join(localDirectory, branchName) + ".seg.nrrd"
-            if branchName in segmentationNodesByName.keys():
-                self.segmentationNode = segmentationNodesByName[branchName]
-                self.segmentationNode.GetDisplayNode().SetVisibility(True)
-            else:
-                self.segmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
-                self.segmentationNode.CreateDefaultDisplayNodes()
-                self.segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(volumeNode)
-                self.segmentationNode.SetName(branchName)
+            if configuration == "segment":
+                if branchName in segmentationNodesByName.keys():
+                    self.segmentationNode = segmentationNodesByName[branchName]
+                    self.segmentationNode.GetDisplayNode().SetVisibility(True)
+                else:
+                    self.segmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
+                    self.segmentationNode.CreateDefaultDisplayNodes()
+                    self.segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(volumeNode)
+                    self.segmentationNode.SetName(branchName)
 
-            editorWidget.parameterSetNode.SetAndObserveSegmentationNode(self.segmentationNode)
+                editorWidget.parameterSetNode.SetAndObserveSegmentationNode(self.segmentationNode)
             editorWidget.parameterSetNode.SetAndObserveSourceVolumeNode(volumeNode)
 
     def nameWithOwner(self, remote):
@@ -1669,7 +1814,10 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         if not self.localRepo:
             return None
         branchName = self.localRepo.active_branch.name
-        upstreamNameWithOwner = self.nameWithOwner("upstream")
+        try:
+            upstreamNameWithOwner = self.nameWithOwner("upstream")
+        except ValueError:
+            return None
         upstreamOwner = upstreamNameWithOwner.split("/")[0]
         issuePR = None
         prs = self.prList(role=role)
@@ -1793,18 +1941,20 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.gh(commandList)
 
     @gitEnvironmentDecorator
-    def createAccessionRepo(self, sourceVolume, colorTable, accessionData):
+    def createAccessionRepo(self, sourceVolume, colorTable, accessionData, sourceSegmentation=None):
 
         repoName = accessionData['githubRepoName'][1]
         repoDir = os.path.join(self.localRepositoryDirectory(), repoName)
         os.makedirs(repoDir)
 
         # save data
+        repoFileNames = []
         sourceFileName = sourceVolume.GetName()
         sourceFilePath = os.path.join(repoDir, sourceFileName) + ".nrrd"
         slicer.util.saveNode(sourceVolume, sourceFilePath)
         colorTableName = colorTable.GetName()
         slicer.util.saveNode(colorTable, os.path.join(repoDir, colorTableName) + ".csv")
+        repoFileNames.append(f"{colorTableName}.csv")
 
         # write accessionData file
         fp = open(os.path.join(repoDir, "MorphoDepotAccession.json"), "w")
@@ -1855,12 +2005,15 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
         # create initial repo
         repo = self.git.Repo.init(repoDir, initial_branch='main')
 
-        repoFileNames = [
+        repoFileNames += [
             "README.md",
             "LICENSE.txt",
             "MorphoDepotAccession.json",
-            f"{colorTableName}.csv",
         ]
+        if sourceSegmentation:
+            segmentationName = "baseline" # initial segmentation
+            slicer.util.saveNode(sourceSegmentation, os.path.join(repoDir, segmentationName) + ".seg.nrrd")
+            repoFileNames.append(f"{segmentationName}.seg.nrrd")
         repoFilePaths = [os.path.join(repoDir, fileName) for fileName in repoFileNames]
         repo.index.add(repoFilePaths)
         repo.index.commit("Initial commit")
@@ -1949,7 +2102,7 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
         for nameWithOwner, repoData in self.repoDataByNameWithOwner.items():
             for textField in textFields:
                 if textField in repoData:
-                    if fnmatch.fnmatch(repoData[textField][1], f"*{criteria['freeText']}*"):
+                    if fnmatch.fnmatch(repoData[textField][1].lower(), f"*{criteria['freeText'].lower()}*"):
                         matchingRepos.add(nameWithOwner)
 
         results = {}

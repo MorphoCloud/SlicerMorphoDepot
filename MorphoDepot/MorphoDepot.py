@@ -163,6 +163,8 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.logic = None
         self.issuesByItem = {}
         self.prsByItem = {}
+        self.segmentMTimesByID = {}
+        self.segmentNamesByID = {}
 
     def progressMethod(self, message=None):
         message = message if message else self
@@ -202,10 +204,20 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.tabWidget.addTab(uiWidget, "Review")
         self.reviewUI = slicer.util.childWidgetVariables(uiWidget)
 
+        uiWidget = slicer.util.loadUI(os.path.normpath(self.resourcePath("UI/MorphoDepotRelease.ui")))
+        uiWidget.setMRMLScene(slicer.mrmlScene)
+        self.tabWidget.addTab(uiWidget, "Release")
+        self.releaseUI = slicer.util.childWidgetVariables(uiWidget)
+
         uiWidget = slicer.util.loadUI(os.path.normpath(self.resourcePath("UI/MorphoDepotSearch.ui")))
         uiWidget.setMRMLScene(slicer.mrmlScene)
         self.tabWidget.addTab(uiWidget, "Search")
         self.searchUI = slicer.util.childWidgetVariables(uiWidget)
+
+        self.adminTab = qt.QScrollArea()
+        self.tabWidget.addTab(self.adminTab, "Admin")
+        self.adminTabIndex = self.tabWidget.indexOf(self.adminTab)
+        self.adminUI = {} # for future use
 
         # restore last tab index
         tabIndex = slicer.util.settingsValue("MorphoDepot/tabIndex", 0, converter=int)
@@ -229,6 +241,10 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.configureUI.ghPath.currentPath = os.path.normpath(self.logic.ghExecutablePath) if self.logic.ghExecutablePath else ""
         self.configureUI.ghPath.toolTip = "Restart Slicer after setting new path"
         self.annotateUI.forkManagementCollapsibleButton.enabled = False
+        self.configureUI.adminModeCheckBox = qt.QCheckBox("Administrator mode")
+        self.configureUI.configureCollapsibleButton.layout().addWidget(self.configureUI.adminModeCheckBox)
+        adminMode = slicer.util.settingsValue("MorphoDepot/adminMode", False, converter=slicer.util.toBool)
+        self.configureUI.adminModeCheckBox.checked = adminMode
 
         # Create
         self.createUI.colorSelector = slicer.qMRMLColorTableComboBox()
@@ -241,8 +257,15 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.createUI.accessionForm = MorphoDepotAccessionForm(validationCallback=validationCallback)
         self.createUI.accessionLayout.addWidget(self.createUI.accessionForm.topWidget)
 
+        # Annotate
+        self.annotateUI.commitButton.enabled = False
+        self.annotateUI.reviewButton.enabled = False
+
         # Review
         self.reviewUI.prCollapsibleButton.enabled = False
+
+        # Release
+        self.releaseUI.releasesCollapsibleButton.enabled = False
 
         # Search
         self.searchUI.searchForm = MorphoDepotSearchForm(updateCallback=self.doSearch)
@@ -256,12 +279,14 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.tabWidget.currentChanged.connect(self.onCurrentTabChanged)
         self.configureUI.repoDirectory.comboBox().connect("currentTextChanged(QString)", self.onRepoDirectoryChanged)
         self.configureUI.gitPath.comboBox().connect("currentTextChanged(QString)", self.onGitPathChanged)
+        self.configureUI.adminModeCheckBox.stateChanged.connect(self.onAdminModeChanged)
         self.configureUI.ghPath.comboBox().connect("currentTextChanged(QString)", self.onGhPathChanged)
         self.createUI.createRepository.clicked.connect(self.onCreateRepository)
         self.createUI.openRepository.clicked.connect(self.onOpenRepository)
         self.createUI.clearForm.clicked.connect(self.onClearForm)
         self.annotateUI.issueList.itemDoubleClicked.connect(self.onIssueDoubleClicked)
         self.annotateUI.prList.itemSelectionChanged.connect(self.onPRSelectionChanged)
+        self.annotateUI.messageTitle.textChanged.connect(self.onCommitMessageChanged)
         self.annotateUI.commitButton.clicked.connect(self.onCommit)
         self.annotateUI.reviewButton.clicked.connect(self.onRequestReview)
         self.annotateUI.refreshButton.connect("clicked(bool)", self.onRefresh)
@@ -270,7 +295,14 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.reviewUI.prList.itemDoubleClicked.connect(self.onPRDoubleClicked)
         self.reviewUI.requestChangesButton.clicked.connect(self.onRequestChanges)
         self.reviewUI.approveButton.clicked.connect(self.onApprove)
+        self.releaseUI.refreshButton.clicked.connect(self.onRefreshReleaseTab)
+        self.releaseUI.repoList.itemDoubleClicked.connect(self.onReleaseRepoDoubleClicked)
+        self.releaseUI.makeReleaseButton.clicked.connect(self.onMakeRelease)
+        self.releaseUI.openReleasePageButton.clicked.connect(self.onOpenReleasePage)
         self.searchUI.refreshButton.clicked.connect(self.onRefreshSearch)
+
+        # set initial visibility of admin tab
+        self.onAdminModeChanged(self.configureUI.adminModeCheckBox.checkState())
 
     def cleanup(self) -> None:
         """Called when the application closes and the module widget is destroyed."""
@@ -286,9 +318,16 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.reviewUI.prsCollapsibleButton.enabled = moduleEnabled
         self.reviewUI.refreshButton.enabled = moduleEnabled
         self.reviewUI.prCollapsibleButton.enabled = self.logic.issuePR(role="reviewer")
+        self.releaseUI.reposCollapsibleButton.enabled = moduleEnabled
+        self.releaseUI.refreshButton.enabled = moduleEnabled
 
     def onCurrentTabChanged(self,index):
         qt.QSettings().setValue("MorphoDepot/tabIndex", index)
+
+    def onAdminModeChanged(self, state):
+        isAdmin = (state == qt.Qt.Checked)
+        qt.QSettings().setValue("MorphoDepot/adminMode", isAdmin)
+        self.tabWidget.setTabVisible(self.adminTabIndex, isAdmin)
 
     # Create
     def onCreateRepository(self):
@@ -331,6 +370,10 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
     def onRefresh(self):
         self.updateIssueList()
         self.updateAnnotatePRList()
+
+    def onCommitMessageChanged(self, text):
+        commitEnabled = (text != "")
+        self.annotateUI.commitButton.enabled = commitEnabled
 
     def updateIssueList(self):
         slicer.util.showStatusMessage(f"Updating issues")
@@ -381,14 +424,66 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         repoDirectory = os.path.normpath(self.configureUI.repoDirectory.currentPath)
         issue = self.issuesByItem[item]
         if slicer.util.confirmOkCancelDisplay("Close scene and load issue?"):
+            self.removeObservers()
+            self.segmentMTimesByID = {}
+            self.segmentNamesByID = {}
             self.annotateUI.currentIssueLabel.text = f"Issue: {item.text()}"
             slicer.mrmlScene.Clear()
             try:
                 self.logic.loadIssue(issue, repoDirectory)
                 self.annotateUI.forkManagementCollapsibleButton.enabled = True
+                segmentation = self.logic.segmentationNode.GetSegmentation()
+                representation = segmentation.GetSourceRepresentationName()
+                self.addObserver(segmentation, segmentation.SourceRepresentationModified, self.onSourceRepresentationModified)
+                for segmentID in segmentation.GetSegmentIDs():
+                    self.segmentMTimesByID[segmentID] = segmentation.GetSegment(segmentID).GetMTime()
+                    self.segmentNamesByID[segmentID] = segmentation.GetSegment(segmentID).GetName()
+                pr = self.logic.issuePR(role="segmenter")
+                if pr:
+                    self.annotateUI.reviewButton.enabled = True
                 slicer.util.showStatusMessage(f"Start segmenting {item.text()}")
             except self.logic.git.exc.NoSuchPathError:
                 slicer.util.errorDisplay("Could not load issue. If it was just created on github please wait a few seconds and try again")
+
+    def onSourceRepresentationModified(self, segmentation, callData):
+        """Called when a segment is modified, updates the commit message."""
+
+        segmentation = self.logic.segmentationNode.GetSegmentation()
+        representation = segmentation.GetSourceRepresentationName()
+        currentSegmentIDs = segmentation.GetSegmentIDs()
+
+        removedSegmentNames = set()
+        for segmentID,segmentName in self.segmentNamesByID.items():
+            if segmentID not in currentSegmentIDs:
+                removedSegmentNames.add(segmentName)
+
+        addedSegmentNames = set()
+        modifiedSegmentNames = set()
+        for segmentID in currentSegmentIDs:
+            if segmentID not in self.segmentMTimesByID:
+                addedSegmentNames.add(segmentation.GetSegment(segmentID).GetName())
+            elif self.segmentMTimesByID[segmentID] < segmentation.GetSegment(segmentID).GetMTime():
+                modifiedSegmentNames.add(self.segmentNamesByID[segmentID])
+
+        # Update UI
+        # Don't report which segments are modified unless we figure out how to detect it robustly:
+        # https://discourse.slicer.org/t/detecting-which-segments-have-been-modified/44453
+        segmentationName = self.logic.segmentationNode.GetName()
+        title = f"Edited {segmentationName}"
+        body = ""
+        if len(modifiedSegmentNames) > 0:
+            pass
+            #title += f" - {len(modifiedSegmentNames)} modified"
+            #body += "\nModified segments:\n" + "\n".join(f"- {name}" for name in sorted(list(modifiedSegmentNames)))
+        if len(addedSegmentNames) > 0:
+            title += f" - {len(addedSegmentNames)} added"
+            body += "\nAdded segments:\n" + "\n".join(f"- {name}" for name in sorted(list(addedSegmentNames)))
+        if len(removedSegmentNames) > 0:
+            title += f" - {len(removedSegmentNames)} removed"
+            body += "\nRemoved segments:\n" + "\n".join(f"- {name}" for name in sorted(list(removedSegmentNames)))
+        self.annotateUI.messageTitle.text = title
+        self.annotateUI.messageBody.plainText = body
+        slicer.util.showStatusMessage(f"MorphoDepot commit message updated. {title}")
 
     def onCommit(self):
         slicer.util.showStatusMessage(f"Committing and pushing")
@@ -401,6 +496,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         if self.logic.commitAndPush(message):
             self.annotateUI.messageTitle.text = ""
             self.annotateUI.messageBody.plainText = ""
+            self.modifiedSegments.clear()
             slicer.util.showStatusMessage(f"Commit and push complete")
             self.updateAnnotatePRList()
         else:
@@ -411,8 +507,14 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
     def onRequestReview(self):
         """Create a checkpoint if need, then mark issue as ready for review"""
         slicer.util.showStatusMessage(f"Marking pull request for review")
+        pr = self.logic.issuePR(role="segmenter")
+        if not pr:
+            self.onCommit()
         prURL = self.logic.requestReview()
         self.updateAnnotatePRList()
+        self.annotateUI.messageTitle.text = ""
+        self.annotateUI.messageBody.plainText = ""
+        self.modifiedSegments.clear()
 
     def onRepoDirectoryChanged(self):
         logging.info(f"Setting repoDirectory to be {os.path.normpath(self.configureUI.repoDirectory.currentPath)}")
@@ -471,8 +573,57 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.reviewUI.reviewMessage.plainText = ""
         self.updateReviewPRList()
 
+    # Release
+    def onRefreshReleaseTab(self):
+        slicer.util.showStatusMessage("Fetching owned repositories...")
+        self.releaseUI.repoList.clear()
+        self.releaseUI.makeReleaseButton.enabled = False
+        self.releaseUI.releasesCollapsibleButton.enabled = False
+        self.releaseUI.currentRepoLabel.text = "No repository loaded"
+        self.releaseUI.currentVersionLabel.text = "Current version: None"
+        self.releaseUI.openReleasePageButton.enabled = False
+        self.reposByItem = {}
+        ownedRepos = self.logic.ownedRepoList()
+        for repo in ownedRepos:
+            item = qt.QListWidgetItem(repo['nameWithOwner'])
+            self.reposByItem[item] = repo
+            self.releaseUI.repoList.addItem(item)
+        slicer.util.showStatusMessage(f"Found {len(ownedRepos)} owned repositories.")
+
+    def onReleaseRepoDoubleClicked(self, item):
+        repoData = self.reposByItem[item]
+        slicer.util.showStatusMessage(f"Loading repository {repoData['nameWithOwner']}...")
+        if slicer.util.confirmOkCancelDisplay("Close scene and load repository?"):
+            slicer.mrmlScene.Clear()
+            with slicer.util.tryWithErrorDisplay("Failed to load repository", waitCursor=True):
+                if self.logic.loadRepoForRelease(repoData):
+                    self.releaseUI.currentRepoLabel.text = f"Loaded: {repoData['nameWithOwner']}"
+                    self.releaseUI.releasesCollapsibleButton.enabled = True
+                    self.releaseUI.makeReleaseButton.enabled = True
+                    self.updateCurrentVersionLabel()
+                    slicer.util.showStatusMessage(f"Repository {repoData['nameWithOwner']} loaded.")
+
+    def updateCurrentVersionLabel(self):
+        """Gets releases and updates the version label and open page button."""
+        self.releaseUI.openReleasePageButton.enabled = False
+        releases = self.logic.getReleases()
+        if releases:
+            latestRelease = releases[0] # gh cli returns latest first
+            self.releaseUI.currentVersionLabel.text = f"Current version: {latestRelease['tagName']}"
+            self.releaseUI.openReleasePageButton.enabled = True
+        else:
+            self.releaseUI.currentVersionLabel.text = "Current version: None"
+
+    def onOpenReleasePage(self):
+        """Opens the GitHub releases page for the current repository."""
+        if self.logic.localRepo:
+            nameWithOwner = self.logic.nameWithOwner("origin")
+            releasesURL = qt.QUrl(f"https://github.com/{nameWithOwner}/releases")
+            qt.QDesktopServices.openUrl(releasesURL)
+
     # Search
     def onRefreshSearch(self):
+        slicer.util.showStatusMessage("Refreshing search cache...")
         self.logic.refreshSearchCache()
         self.searchUI.searchForm.topWidget.enabled = True
         self.doSearch()
@@ -493,6 +644,14 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             self.searchUI.searchResults.addItem(item)
         slicer.util.showStatusMessage(f"{len(results.keys())} matching repositories")
 
+    def onMakeRelease(self):
+        slicer.util.showStatusMessage("Creating new release...")
+        releaseNotes = self.releaseUI.releaseCommentsEdit.plainText
+        with slicer.util.tryWithErrorDisplay("Failed to create release", waitCursor=True):
+            self.logic.createRelease(releaseNotes)
+        self.releaseUI.releaseCommentsEdit.plainText = ""
+        self.updateCurrentVersionLabel()
+        slicer.util.showStatusMessage("New release created. You can add more comments on the GitHub release page.")
 
 class MorphoDepotAccessionForm():
     """Customized interface to collect data about MorphoDepot accessions"""
@@ -1063,6 +1222,15 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         if self.gitExecutablePath and os.path.exists(self.gitExecutablePath):
             self.importGitPython()
 
+        if self.usingSystemGit and self.gitExecutablePath:
+            completedProcess = subprocess.run([self.gitExecutablePath, "--exec-path"], capture_output=True)
+            self.gitExecutablesDir = completedProcess.stdout.strip()
+            try:
+                self.gitExecutablesDir = self.gitExecutablesDir.decode() # needed on windows
+            except (UnicodeDecodeError, AttributeError):
+                pass
+
+
     def importGitPython(self):
         # gitpython cannot be imported if it can't find git.
         # we specify the executable but also set it explicitly so that
@@ -1236,14 +1404,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
         environment = {}
         if self.usingSystemGit:
-            if not self.gitExecutablesDir:
-                completedProcess = subprocess.run([self.gitExecutablePath, "--exec-path"], capture_output=True)
-                self.gitExecutablesDir = completedProcess.stdout.strip()
-                try:
-                    self.gitExecutablesDir = self.gitExecutablesDir.decode() # needed on windows
-                except (UnicodeDecodeError, AttributeError):
-                    pass
-                environment = {
+            environment = {
                     "PATH" : os.path.dirname(self.gitExecutablePath),
                     "GIT_EXEC_PATH": self.gitExecutablesDir
                 }
@@ -1267,16 +1428,61 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.progressMethod(f"gh command finished: {result}")
         return result[0]
 
+    def ghJSON(self, command):
+        """Wrapper around gh that returns json loaded data or an empty list on error"""
+        jsonString = self.gh(command)
+        if jsonString:
+            return json.loads(jsonString)
+        return []
+
     def morphoRepos(self):
         # TODO: generalize for other topics
-        return json.loads(self.gh("search repos --limit 1000 --json owner,name --include-forks true -- topic:morphodepot"))
+        query = """
+            query($searchQuery: String!, $after: String) {
+              search(query: $searchQuery, type: REPOSITORY, first: 100, after: $after) {
+                repositoryCount
+                edges {
+                  node {
+                    ... on Repository {
+                      name
+                      owner {
+                        login
+                      }
+                    }
+                  }
+                }
+                pageInfo {
+                  endCursor
+                  hasNextPage
+                }
+              }
+            }
+        """
+        all_repos = []
+        hasNextPage = True
+        after_cursor = None
+        while hasNextPage:
+            result = self.ghJSON(['api', 'graphql', '-f', f'query={query}', '-f', 'searchQuery=topic:morphodepot fork:true', '-F', f'after={after_cursor if after_cursor else "null"}'])
+            if result and 'data' in result and 'search' in result['data']:
+                all_repos.extend([edge['node'] for edge in result['data']['search']['edges']])
+                hasNextPage = result['data']['search']['pageInfo']['hasNextPage']
+                after_cursor = result['data']['search']['pageInfo']['endCursor']
+            else:
+                hasNextPage = False
+        return all_repos
 
     def issueList(self):
         repoList = self.morphoRepos()
-        candiateIssueList = json.loads(self.gh(f"search issues --limit 1000 --assignee=@me --state open --json repository,title,number"))
+        candiateIssueList = self.ghJSON(f"search issues --limit 1000 --assignee=@me --state open --json repository,title,number")
         repoNamesWithOwner = [f"{repo['owner']['login']}/{repo['name']}" for repo in repoList]
         issueList = [issue for issue in candiateIssueList if issue['repository']['nameWithOwner'] in repoNamesWithOwner]
         return issueList
+
+    def ownedRepoList(self):
+        repos = self.ghJSON(f"search repos --limit 1000 --owner=@me --json name,owner -- topic:morphodepot")
+        for repo in repos:
+            repo['nameWithOwner'] = f"{repo['owner']['login']}/{repo['name']}"
+        return repos
 
     def prList(self, role="segmenter"):
         repoList = self.morphoRepos()
@@ -1286,10 +1492,10 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         elif role == "reviewer":
             searchString = "--owner=@me"
         jsonFields = "title,number,author,isDraft,updatedAt,repository"
-        candidatePRList = json.loads(self.gh(f"search prs --limit 1000 --state open --json {jsonFields} {searchString}"))
+        candidatePRList = self.ghJSON(f"search prs --limit 1000 --state open --json {jsonFields} {searchString}")
         prList = [pr for pr in candidatePRList if pr['repository']['nameWithOwner'] in repoNamesWithOwner]
         for pr in prList:
-            issues = json.loads(self.gh(f"issue list --repo {pr['repository']['nameWithOwner']} --json title,number --state open"))
+            issues = self.ghJSON(f"issue list --repo {pr['repository']['nameWithOwner']} --json title,number --state open")
             pr['issueTitle'] = "issue not found"
             for issue in issues:
                 if pr['title'] == f"issue-{issue['number']}":
@@ -1372,10 +1578,26 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.loadFromLocalRepository()
         return True
 
-    def loadFromLocalRepository(self):
+    @gitEnvironmentDecorator
+    def loadRepoForRelease(self, repoData):
+        repoName = repoData['name']
+        repoNameWithOwner = repoData['nameWithOwner']
+        localDirectory = os.path.join(self.localRepositoryDirectory(), repoName)
+
+        if not os.path.exists(localDirectory):
+            self.gh(f"repo clone {repoNameWithOwner} {localDirectory}")
+
+        self.localRepo = self.git.Repo(localDirectory)
+        self.localRepo.remotes.origin.fetch()
+        self.localRepo.git.checkout("main")
+        self.localRepo.remotes.origin.pull()
+        self.loadFromLocalRepository(remoteName="origin", configuration="release")
+        return True
+
+    def loadFromLocalRepository(self, remoteName="upstream", configuration="segment"):
         localDirectory = self.localRepo.working_dir
         branchName = self.localRepo.active_branch.name
-        upstreamNameWithOwner = self.nameWithOwner("upstream")
+        remoteNameWithOwner = self.nameWithOwner(remoteName)
 
         self.progressMethod(f"Loading {branchName} into {localDirectory}")
 
@@ -1395,7 +1617,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         if not os.path.exists(volumePath):
             volumePath = os.path.join(localDirectory, "master_volume") # for backwards compatibility
         volumeURL = open(volumePath).read().strip()
-        nrrdPath = os.path.join(localDirectory, f"{upstreamNameWithOwner.replace('/', '-')}-volume.nrrd")
+        nrrdPath = os.path.join(localDirectory, f"{remoteNameWithOwner.replace('/', '-')}-volume.nrrd")
         if not os.path.exists(nrrdPath):
             #slicer.util.downloadFile(volumeURL, nrrdPath)
             downloadFileWorkaround(volumeURL, nrrdPath)
@@ -1406,25 +1628,28 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         for segmentationPath in glob.glob(f"{localDirectory}/*.seg.nrrd"):
             name = os.path.split(segmentationPath)[1].split(".")[0]
             segmentationNodesByName[name] = slicer.util.loadSegmentation(segmentationPath)
-            segmentationNodesByName[name].GetDisplayNode().SetVisibility(False)
 
-        # Switch to Segment Editor module
-        pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
-        pluginHandlerSingleton.pluginByName("Default").switchToModule("SegmentEditor")
-        editorWidget = slicer.modules.segmenteditor.widgetRepresentation().self()
+        if configuration == "segment":
+            for segmentationNode in segmentationNodesByName.values():
+                segmentationNode.GetDisplayNode().SetVisibility(False)
 
-        self.segmentationPath = os.path.join(localDirectory, branchName) + ".seg.nrrd"
-        if branchName in segmentationNodesByName.keys():
-            self.segmentationNode = segmentationNodesByName[branchName]
-            self.segmentationNode.GetDisplayNode().SetVisibility(True)
-        else:
-            self.segmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
-            self.segmentationNode.CreateDefaultDisplayNodes()
-            self.segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(volumeNode)
-            self.segmentationNode.SetName(branchName)
+            # Switch to Segment Editor module
+            pluginHandlerSingleton = slicer.qSlicerSubjectHierarchyPluginHandler.instance()
+            pluginHandlerSingleton.pluginByName("Default").switchToModule("SegmentEditor")
+            editorWidget = slicer.modules.segmenteditor.widgetRepresentation().self()
 
-        editorWidget.parameterSetNode.SetAndObserveSegmentationNode(self.segmentationNode)
-        editorWidget.parameterSetNode.SetAndObserveSourceVolumeNode(volumeNode)
+            self.segmentationPath = os.path.join(localDirectory, branchName) + ".seg.nrrd"
+            if branchName in segmentationNodesByName.keys():
+                self.segmentationNode = segmentationNodesByName[branchName]
+                self.segmentationNode.GetDisplayNode().SetVisibility(True)
+            else:
+                self.segmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
+                self.segmentationNode.CreateDefaultDisplayNodes()
+                self.segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(volumeNode)
+                self.segmentationNode.SetName(branchName)
+
+            editorWidget.parameterSetNode.SetAndObserveSegmentationNode(self.segmentationNode)
+            editorWidget.parameterSetNode.SetAndObserveSourceVolumeNode(volumeNode)
 
     def nameWithOwner(self, remote):
         branchName = self.localRepo.active_branch.name
@@ -1541,6 +1766,32 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         commandList += ["--body", "Merging and closing"]
         self.gh(commandList)
 
+    def getReleases(self):
+        """Get list of releases for the current repository."""
+        if not self.localRepo:
+            return None
+        originNameWithOwner = self.nameWithOwner("origin")
+        return self.ghJSON(f"release list --repo {originNameWithOwner} --json name,tagName")
+
+    def createRelease(self, releaseNotes=""):
+        """Create a new release for the current repository with an incremented version."""
+        if not self.localRepo:
+            return
+        releases = self.getReleases()
+        nextVersion = 1
+        if releases:
+            tagNames = [r['tagName'] for r in releases if r['tagName'].startswith('v')]
+            versions = [int(t[1:]) for t in tagNames if t[1:].isdigit()]
+            if versions:
+                nextVersion = max(versions) + 1
+        upstreamNameWithOwner = self.nameWithOwner("origin")
+        if releaseNotes == "":
+            releaseNotes = f"Version {nextVersion} release."
+        # use list for command to handle spaces in releaseNotes
+        commandList = ["release", "create", f"v{nextVersion}", "--repo", upstreamNameWithOwner]
+        commandList += ["--notes", releaseNotes]
+        self.gh(commandList)
+
     @gitEnvironmentDecorator
     def createAccessionRepo(self, sourceVolume, colorTable, accessionData):
 
@@ -1624,7 +1875,10 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
         self.gh(f"repo edit {repoNameWithOwner} --add-topic morphodepot --add-topic md-{speciesTopicString}")
 
         # create initial release and add asset
-        self.gh(f"release create --repo {repoNameWithOwner} v1 --notes Initial-release")
+        # use list for command to handle spaces in notes
+        commandList = ["release", "create", "--repo", repoNameWithOwner, "v1"]
+        commandList += ["--notes", "Initial release"]
+        self.gh(commandList)
         self.gh(f"release upload --repo {repoNameWithOwner} v1 {sourceFilePath}#{sourceFileName}.nrrd")
 
         # write source volume pointer file
@@ -1741,4 +1995,3 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
         self.delayDisplay("Starting the test")
 
         self.delayDisplay("Test passed")
-

@@ -189,10 +189,10 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.tabWidget.addTab(uiWidget, "Configure")
         self.configureUI = slicer.util.childWidgetVariables(uiWidget)
 
-        uiWidget = slicer.util.loadUI(os.path.normpath(self.resourcePath("UI/MorphoDepotCreate.ui")))
+        uiWidget = slicer.util.loadUI(os.path.normpath(self.resourcePath("UI/MorphoDepotSearch.ui")))
         uiWidget.setMRMLScene(slicer.mrmlScene)
-        self.tabWidget.addTab(uiWidget, "Create")
-        self.createUI = slicer.util.childWidgetVariables(uiWidget)
+        self.tabWidget.addTab(uiWidget, "Search")
+        self.searchUI = slicer.util.childWidgetVariables(uiWidget)
 
         uiWidget = slicer.util.loadUI(os.path.normpath(self.resourcePath("UI/MorphoDepotAnnotate.ui")))
         uiWidget.setMRMLScene(slicer.mrmlScene)
@@ -204,15 +204,15 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.tabWidget.addTab(uiWidget, "Review")
         self.reviewUI = slicer.util.childWidgetVariables(uiWidget)
 
+        uiWidget = slicer.util.loadUI(os.path.normpath(self.resourcePath("UI/MorphoDepotCreate.ui")))
+        uiWidget.setMRMLScene(slicer.mrmlScene)
+        self.tabWidget.addTab(uiWidget, "Create")
+        self.createUI = slicer.util.childWidgetVariables(uiWidget)
+
         uiWidget = slicer.util.loadUI(os.path.normpath(self.resourcePath("UI/MorphoDepotRelease.ui")))
         uiWidget.setMRMLScene(slicer.mrmlScene)
         self.tabWidget.addTab(uiWidget, "Release")
         self.releaseUI = slicer.util.childWidgetVariables(uiWidget)
-
-        uiWidget = slicer.util.loadUI(os.path.normpath(self.resourcePath("UI/MorphoDepotSearch.ui")))
-        uiWidget.setMRMLScene(slicer.mrmlScene)
-        self.tabWidget.addTab(uiWidget, "Search")
-        self.searchUI = slicer.util.childWidgetVariables(uiWidget)
 
         self.adminTab = qt.QScrollArea()
         self.tabWidget.addTab(self.adminTab, "Admin")

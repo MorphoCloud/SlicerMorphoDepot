@@ -163,7 +163,6 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.logic = None
         self.issuesByItem = {}
         self.prsByItem = {}
-        self.segmentMTimesByID = {}
         self.segmentNamesByID = {}
         self.searchResultsByItem = {}
 
@@ -455,7 +454,6 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         issue = self.issuesByItem[item]
         if slicer.util.confirmOkCancelDisplay("Close scene and load issue?"):
             self.removeObservers()
-            self.segmentMTimesByID = {}
             self.segmentNamesByID = {}
             self.annotateUI.currentIssueLabel.text = f"Issue: {item.text()}"
             slicer.mrmlScene.Clear()
@@ -463,11 +461,17 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
                 self.logic.loadIssue(issue, repoDirectory)
                 self.annotateUI.forkManagementCollapsibleButton.enabled = True
                 segmentation = self.logic.segmentationNode.GetSegmentation()
-                representation = segmentation.GetSourceRepresentationName()
-                self.addObserver(segmentation, segmentation.SourceRepresentationModified, self.onSourceRepresentationModified)
+                segmentationLogic = slicer.modules.segmentations.logic()
                 for segmentID in segmentation.GetSegmentIDs():
-                    self.segmentMTimesByID[segmentID] = segmentation.GetSegment(segmentID).GetMTime()
-                    self.segmentNamesByID[segmentID] = segmentation.GetSegment(segmentID).GetName()
+                    segment = segmentation.GetSegment(segmentID)
+                    segmentationLogic.SetSegmentStatus(segment, segmentationLogic.NotStarted)
+                    self.segmentNamesByID[segmentID] = segment.GetName()
+                segmentEvents = [segmentation.SourceRepresentationModified,
+                                 segmentation.SegmentModified,
+                                 segmentation.SegmentAdded,
+                                 segmentation.SegmentRemoved]
+                for event in segmentEvents:
+                    self.addObserver(segmentation, event, self.onSegmentationModified)
                 pr = self.logic.issuePR(role="segmenter")
                 if pr:
                     self.annotateUI.reviewButton.enabled = True
@@ -475,11 +479,11 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             except self.logic.git.exc.NoSuchPathError:
                 slicer.util.errorDisplay("Could not load issue. If it was just created on github please wait a few seconds and try again")
 
-    def onSourceRepresentationModified(self, segmentation, callData):
+    def onSegmentationModified(self, segmentation, callData):
         """Called when a segment is modified, updates the commit message."""
 
+        segmentationLogic = slicer.modules.segmentations.logic()
         segmentation = self.logic.segmentationNode.GetSegmentation()
-        representation = segmentation.GetSourceRepresentationName()
         currentSegmentIDs = segmentation.GetSegmentIDs()
 
         removedSegmentNames = set()
@@ -490,10 +494,11 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         addedSegmentNames = set()
         modifiedSegmentNames = set()
         for segmentID in currentSegmentIDs:
-            if segmentID not in self.segmentMTimesByID:
-                addedSegmentNames.add(segmentation.GetSegment(segmentID).GetName())
-            elif self.segmentMTimesByID[segmentID] < segmentation.GetSegment(segmentID).GetMTime():
-                modifiedSegmentNames.add(self.segmentNamesByID[segmentID])
+            segment = segmentation.GetSegment(segmentID)
+            if segmentID not in self.segmentNamesByID:
+                addedSegmentNames.add(segment.GetName())
+            elif segmentationLogic.GetSegmentStatus(segment) != segmentationLogic.NotStarted:
+                modifiedSegmentNames.add(segment.GetName())
 
         # Update UI
         # Don't report which segments are modified unless we figure out how to detect it robustly:
@@ -502,9 +507,8 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         title = f"Edited {segmentationName}"
         body = ""
         if len(modifiedSegmentNames) > 0:
-            pass
-            #title += f" - {len(modifiedSegmentNames)} modified"
-            #body += "\nModified segments:\n" + "\n".join(f"- {name}" for name in sorted(list(modifiedSegmentNames)))
+            title += f" - {len(modifiedSegmentNames)} modified"
+            body += "\nModified segments:\n" + "\n".join(f"- {name}" for name in sorted(list(modifiedSegmentNames)))
         if len(addedSegmentNames) > 0:
             title += f" - {len(addedSegmentNames)} added"
             body += "\nAdded segments:\n" + "\n".join(f"- {name}" for name in sorted(list(addedSegmentNames)))

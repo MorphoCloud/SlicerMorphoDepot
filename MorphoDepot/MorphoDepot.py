@@ -668,16 +668,20 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         results = self.logic.search(criteria)
         self.updateSearchResults(results)
 
+    def repoDataKetToRepoNameAndOwner(self, repoDataKey):
+        nameWithOwnerSplit = repoDataKey.split('-')
+        repoName = "-".join(nameWithOwnerSplit[:-1])
+        owner = nameWithOwnerSplit[-1]
+        return repoName,owner
+
     def updateSearchResults(self, results):
         slicer.util.showStatusMessage(f"Updating search results")
         self.searchUI.resultsModel.clear()
         self.searchResultsByItem = {}
         headers = ["Repository", "Owner", "Species", "Modality", "Spacing", "Dimensions"]
         self.searchUI.resultsModel.setHorizontalHeaderLabels(headers)
-        for nameWithOwner, repoData in results.items():
-            nameWithOwnerSplit = nameWithOwner.split('-')
-            repoName = "-".join(nameWithOwnerSplit[:-1])
-            owner = nameWithOwnerSplit[-1]
+        for repoDataKey, repoData in results.items():
+            repoName,owner = self.repoDataKetToRepoNameAndOwner(repoDataKey)
             species = repoData.get('species', [None, "N/A"])[1]
             modality = repoData.get('modality', [None, "N/A"])[1]
             
@@ -711,7 +715,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
 
             # Store the full data in the first item of the row
             repoItem.setData(repoData, qt.Qt.UserRole)
-            repoItem.setData(nameWithOwner, qt.Qt.UserRole + 1)
+            repoItem.setData(repoDataKey, qt.Qt.UserRole + 1)
 
             rowItems = [repoItem, ownerItem, speciesItem, modalityItem, spacingItem, dimensionsItem]
             tooltipText = json.dumps(repoData, indent=2)
@@ -741,8 +745,8 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
 
         item = self.searchUI.resultsModel.item(index.row(), 0)
         repoData = item.data(qt.Qt.UserRole)
-        nameWithOwner = item.data(qt.Qt.UserRole + 1)
-        repoName, owner = nameWithOwner.split('-', 1)
+        repoDataKey = item.data(qt.Qt.UserRole + 1)
+        repoName, owner = self.repoDataKetToRepoNameAndOwner(repoDataKey)
         fullRepoName = f"{owner}/{repoName}"
 
         menu = qt.QMenu()
@@ -762,8 +766,8 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             return
 
         item = self.searchUI.resultsModel.item(index.row(), 0)
-        nameWithOwner = item.data(qt.Qt.UserRole + 1)
-        repoName, owner = nameWithOwner.split('-', 1)
+        repoDataKey = item.data(qt.Qt.UserRole + 1)
+        repoName, owner = self.repoDataKetToRepoNameAndOwner(repoDataKey)
         fullRepoName = f"{owner}/{repoName}"
         self.previewRepository(fullRepoName)
 

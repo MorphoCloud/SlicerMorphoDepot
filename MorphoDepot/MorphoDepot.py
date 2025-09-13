@@ -397,8 +397,11 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
 
     # Annotate
     def onRefresh(self):
-        self.updateIssueList()
-        self.updateAnnotatePRList()
+        with slicer.util.tryWithErrorDisplay("Failed to refresh from GitHub", waitCursor=True):
+            self.annotateUI.issueList.clear()
+            self.annotateUI.prList.clear()
+            self.updateIssueList()
+            self.updateAnnotatePRList()
 
     def onCommitMessageChanged(self, text):
         commitEnabled = (text != "")
@@ -453,31 +456,33 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         repoDirectory = os.path.normpath(self.configureUI.repoDirectory.currentPath)
         issue = self.issuesByItem[item]
         if slicer.util.confirmOkCancelDisplay("Close scene and load issue?"):
-            self.removeObservers()
-            self.segmentNamesByID = {}
-            self.annotateUI.currentIssueLabel.text = f"Issue: {item.text()}"
-            slicer.mrmlScene.Clear()
-            try:
-                self.logic.loadIssue(issue, repoDirectory)
-                self.annotateUI.forkManagementCollapsibleButton.enabled = True
-                segmentation = self.logic.segmentationNode.GetSegmentation()
-                segmentationLogic = slicer.modules.segmentations.logic()
-                for segmentID in segmentation.GetSegmentIDs():
-                    segment = segmentation.GetSegment(segmentID)
-                    segmentationLogic.SetSegmentStatus(segment, segmentationLogic.NotStarted)
-                    self.segmentNamesByID[segmentID] = segment.GetName()
-                segmentEvents = [segmentation.SourceRepresentationModified,
-                                 segmentation.SegmentModified,
-                                 segmentation.SegmentAdded,
-                                 segmentation.SegmentRemoved]
-                for event in segmentEvents:
-                    self.addObserver(segmentation, event, self.onSegmentationModified)
-                pr = self.logic.issuePR(role="segmenter")
-                if pr:
-                    self.annotateUI.reviewButton.enabled = True
-                slicer.util.showStatusMessage(f"Start segmenting {item.text()}")
-            except self.logic.git.exc.NoSuchPathError:
-                slicer.util.errorDisplay("Could not load issue. If it was just created on github please wait a few seconds and try again")
+            with slicer.util.tryWithErrorDisplay("Failed to load issue", waitCursor=True):
+                slicer.util.showStatusMessage(f"Loading {item.text()}")
+                self.removeObservers()
+                self.segmentNamesByID = {}
+                self.annotateUI.currentIssueLabel.text = f"Issue: {item.text()}"
+                slicer.mrmlScene.Clear()
+                try:
+                    self.logic.loadIssue(issue, repoDirectory)
+                    self.annotateUI.forkManagementCollapsibleButton.enabled = True
+                    segmentation = self.logic.segmentationNode.GetSegmentation()
+                    segmentationLogic = slicer.modules.segmentations.logic()
+                    for segmentID in segmentation.GetSegmentIDs():
+                        segment = segmentation.GetSegment(segmentID)
+                        segmentationLogic.SetSegmentStatus(segment, segmentationLogic.NotStarted)
+                        self.segmentNamesByID[segmentID] = segment.GetName()
+                    segmentEvents = [segmentation.SourceRepresentationModified,
+                                     segmentation.SegmentModified,
+                                     segmentation.SegmentAdded,
+                                     segmentation.SegmentRemoved]
+                    for event in segmentEvents:
+                        self.addObserver(segmentation, event, self.onSegmentationModified)
+                    pr = self.logic.issuePR(role="segmenter")
+                    if pr:
+                        self.annotateUI.reviewButton.enabled = True
+                    slicer.util.showStatusMessage(f"Start segmenting {item.text()}")
+                except self.logic.git.exc.NoSuchPathError:
+                    slicer.util.errorDisplay("Could not load issue. If it was just created on github please wait a few seconds and try again")
 
     def onSegmentationModified(self, segmentation, callData):
         """Called when a segment is modified, updates the commit message."""
@@ -520,35 +525,37 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         slicer.util.showStatusMessage(f"MorphoDepot commit message updated. {title}")
 
     def onCommit(self):
-        slicer.util.showStatusMessage(f"Committing and pushing")
-        message = self.annotateUI.messageTitle.text
-        if message == "":
-            slicer.util.messageBox("You must provide a commit message (title required, body optional)")
-        body = self.annotateUI.messageBody.plainText
-        if body != "":
-            message = f"{message}\n\n{body}"
-        if self.logic.commitAndPush(message):
-            self.annotateUI.messageTitle.text = ""
-            self.annotateUI.messageBody.plainText = ""
-            self.modifiedSegments.clear()
-            slicer.util.showStatusMessage(f"Commit and push complete")
-            self.updateAnnotatePRList()
-        else:
-            path = os.path.normpath(self.configureUI.repoDirectory.currentPath)
-            slicer.util.messageBox(f"Commit failed.\nYour repository conflicts with what's on github. Copy your work from {path} and then delete the local repository folder and restart the issues.")
-            slicer.util.showStatusMessage(f"Commit and push failed")
+        with slicer.util.tryWithErrorDisplay("Failed to commit and push", waitCursor=True):
+            slicer.util.showStatusMessage(f"Committing and pushing")
+            message = self.annotateUI.messageTitle.text
+            if message == "":
+                slicer.util.messageBox("You must provide a commit message (title required, body optional)")
+                return
+            body = self.annotateUI.messageBody.plainText
+            if body != "":
+                message = f"{message}\n\n{body}"
+            if self.logic.commitAndPush(message):
+                self.annotateUI.messageTitle.text = ""
+                self.annotateUI.messageBody.plainText = ""
+                slicer.util.showStatusMessage(f"Commit and push complete")
+                self.updateAnnotatePRList()
+                self.annotateUI.reviewButton.enabled = True
+            else:
+                path = os.path.normpath(self.configureUI.repoDirectory.currentPath)
+                slicer.util.messageBox(f"Commit failed.\nYour repository conflicts with what's on github. Copy your work from {path} and then delete the local repository folder and restart the issues.")
+                slicer.util.showStatusMessage(f"Commit and push failed")
 
     def onRequestReview(self):
         """Create a checkpoint if need, then mark issue as ready for review"""
-        slicer.util.showStatusMessage(f"Marking pull request for review")
-        pr = self.logic.issuePR(role="segmenter")
-        if not pr:
-            self.onCommit()
-        prURL = self.logic.requestReview()
-        self.updateAnnotatePRList()
-        self.annotateUI.messageTitle.text = ""
-        self.annotateUI.messageBody.plainText = ""
-        self.modifiedSegments.clear()
+        with slicer.util.tryWithErrorDisplay("Failed to request review", waitCursor=True):
+            slicer.util.showStatusMessage(f"Marking pull request for review")
+            pr = self.logic.issuePR(role="segmenter")
+            if not pr:
+                self.onCommit()
+            prURL = self.logic.requestReview()
+            self.updateAnnotatePRList()
+            self.annotateUI.messageTitle.text = ""
+            self.annotateUI.messageBody.plainText = ""
 
     def onRepoDirectoryChanged(self):
         logging.info(f"Setting repoDirectory to be {os.path.normpath(self.configureUI.repoDirectory.currentPath)}")
@@ -568,61 +575,66 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
 
     # Review
     def updateReviewPRList(self):
-        slicer.util.showStatusMessage(f"Updating PRs")
-        self.reviewUI.prList.clear()
-        self.prsByItem = {}
-        prList = self.logic.prList(role="reviewer")
-        for pr in prList:
-            prStatus = 'draft' if pr['isDraft'] else 'ready for review'
-            prTitle = f"{pr['issueTitle']} {pr['repository']['nameWithOwner']}: {pr['title']} ({prStatus})"
-            item = qt.QListWidgetItem(prTitle)
-            self.prsByItem[item] = pr
-            self.reviewUI.prList.addItem(item)
-        slicer.util.showStatusMessage(f"{len(prList)} prs")
+        with slicer.util.tryWithErrorDisplay("Failed to update PR list", waitCursor=True):
+            slicer.util.showStatusMessage(f"Updating PRs")
+            self.reviewUI.prList.clear()
+            self.prsByItem = {}
+            prList = self.logic.prList(role="reviewer")
+            for pr in prList:
+                prStatus = 'draft' if pr['isDraft'] else 'ready for review'
+                prTitle = f"{pr['issueTitle']} {pr['repository']['nameWithOwner']}: {pr['title']} ({prStatus})"
+                item = qt.QListWidgetItem(prTitle)
+                self.prsByItem[item] = pr
+                self.reviewUI.prList.addItem(item)
+            slicer.util.showStatusMessage(f"{len(prList)} prs")
 
     def onPRDoubleClicked(self, item):
-        slicer.util.showStatusMessage(f"Loading {item.text()}")
         repoDirectory = self.logic.localRepositoryDirectory()
         pr = self.prsByItem[item]
         if slicer.util.confirmOkCancelDisplay("Close scene and load PR?"):
-            self.reviewUI.currentPRLabel.text = f"PR: {item.text()}"
-            slicer.mrmlScene.Clear()
-            if self.logic.loadPR(pr, repoDirectory):
-                self.reviewUI.prCollapsibleButton.enabled = True
-                slicer.util.showStatusMessage(f"Start reviewing {item.text()}")
-            else:
-                slicer.util.showStatusMessage(f"PR load failed")
+            with slicer.util.tryWithErrorDisplay("Failed to load PR", waitCursor=True):
+                slicer.util.showStatusMessage(f"Loading {item.text()}")
+                self.reviewUI.currentPRLabel.text = f"PR: {item.text()}"
+                slicer.mrmlScene.Clear()
+                if self.logic.loadPR(pr, repoDirectory):
+                    self.reviewUI.prCollapsibleButton.enabled = True
+                    slicer.util.showStatusMessage(f"Start reviewing {item.text()}")
+                else:
+                    slicer.util.showStatusMessage(f"PR load failed")
 
     def onRequestChanges(self):
-        slicer.util.showStatusMessage(f"Requesting changes")
-        message = self.reviewUI.reviewMessage.plainText
-        self.logic.requestChanges(message)
-        self.reviewUI.reviewMessage.plainText = ""
-        slicer.util.showStatusMessage(f"Changes requested")
-        self.updateReviewPRList()
+        with slicer.util.tryWithErrorDisplay("Failed to request changes", waitCursor=True):
+            slicer.util.showStatusMessage(f"Requesting changes")
+            message = self.reviewUI.reviewMessage.plainText
+            self.logic.requestChanges(message)
+            self.reviewUI.reviewMessage.plainText = ""
+            slicer.util.showStatusMessage(f"Changes requested")
+            self.updateReviewPRList()
 
     def onApprove(self):
-        slicer.util.showStatusMessage(f"Approving")
-        prURL = self.logic.approvePR()
-        self.reviewUI.reviewMessage.plainText = ""
-        self.updateReviewPRList()
+        with slicer.util.tryWithErrorDisplay("Failed to approve PR", waitCursor=True):
+            slicer.util.showStatusMessage(f"Approving")
+            prURL = self.logic.approvePR()
+            self.reviewUI.reviewMessage.plainText = ""
+            self.updateReviewPRList()
 
     # Release
     def onRefreshReleaseTab(self):
-        slicer.util.showStatusMessage("Fetching owned repositories...")
-        self.releaseUI.repoList.clear()
-        self.releaseUI.makeReleaseButton.enabled = False
-        self.releaseUI.releasesCollapsibleButton.enabled = False
-        self.releaseUI.currentRepoLabel.text = "No repository loaded"
-        self.releaseUI.currentVersionLabel.text = "Current version: None"
-        self.releaseUI.openReleasePageButton.enabled = False
-        self.reposByItem = {}
-        ownedRepos = self.logic.ownedRepoList()
-        for repo in ownedRepos:
-            item = qt.QListWidgetItem(repo['nameWithOwner'])
-            self.reposByItem[item] = repo
-            self.releaseUI.repoList.addItem(item)
-        slicer.util.showStatusMessage(f"Found {len(ownedRepos)} owned repositories.")
+        with slicer.util.tryWithErrorDisplay("Failed to refresh repositories", waitCursor=True):
+            slicer.util.showStatusMessage("Fetching owned repositories...")
+            self.releaseUI.repoList.clear()
+            self.releaseUI.makeReleaseButton.enabled = False
+            self.releaseUI.releasesCollapsibleButton.enabled = False
+            self.releaseUI.currentRepoLabel.text = "No repository loaded"
+            self.releaseUI.currentVersionLabel.text = "Current version: None"
+            self.releaseUI.openReleasePageButton.enabled = False
+            self.reposByItem = {}
+            ownedRepos = self.logic.ownedRepoList()
+            for repo in ownedRepos:
+                item = qt.QListWidgetItem(repo['nameWithOwner'])
+                self.reposByItem[item] = repo
+                self.releaseUI.repoList.addItem(item)
+            slicer.util.showStatusMessage(f"Found {len(ownedRepos)} owned repositories.")
 
     def onReleaseRepoDoubleClicked(self, item):
         repoData = self.reposByItem[item]
@@ -657,11 +669,12 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
 
     # Search
     def onRefreshSearch(self):
-        slicer.util.showStatusMessage("Refreshing search cache...")
-        self.logic.refreshSearchCache()
-        self.searchUI.searchForm.searchBox.setPlaceholderText("Search...")
-        self.searchUI.searchForm.topWidget.enabled = True
-        self.doSearch()
+        with slicer.util.tryWithErrorDisplay("Failed to refresh search cache", waitCursor=True):
+            slicer.util.showStatusMessage("Refreshing search cache...")
+            self.logic.refreshSearchCache()
+            self.searchUI.searchForm.searchBox.setPlaceholderText("Search...")
+            self.searchUI.searchForm.topWidget.enabled = True
+            self.doSearch()
 
     def doSearch(self):
         criteria = self.searchUI.searchForm.criteria()
@@ -2105,18 +2118,23 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
                     else:
                         if repoValue != "" and repoValue not in criteria[question]:
                             excludedRepos.add(nameWithOwner)
+
+        matchString = f"*{criteria['freeText'].lower()}*"
         matchingRepos = set()
         textFields = ["githubRepoName", "species"]
         for nameWithOwner, repoData in self.repoDataByNameWithOwner.items():
+            if fnmatch.fnmatch(nameWithOwner, matchString):
+                matchingRepos.add(nameWithOwner)
             for textField in textFields:
                 if textField in repoData:
-                    if fnmatch.fnmatch(repoData[textField][1].lower(), f"*{criteria['freeText'].lower()}*"):
+                    if fnmatch.fnmatch(repoData[textField][1].lower(), matchString):
                         matchingRepos.add(nameWithOwner)
 
         results = {}
         for nameWithOwner in matchingRepos:
             if nameWithOwner not in excludedRepos:
                 results[nameWithOwner] = self.repoDataByNameWithOwner[nameWithOwner]
+
         return results
 
 

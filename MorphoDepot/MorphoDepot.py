@@ -1718,7 +1718,9 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.ensureUpstreamExists()
         self.localRepo.remotes.origin.fetch()
         self.localRepo.git.checkout(branchName)
-        self.localRepo.remotes.origin.pull()
+        if not self.localRepo.head.ref.tracking_branch():
+            originMain = self.localRepo.remotes.origin.refs.main
+            self.localRepo.head.ref.set_tracking_branch(originMain)
         try:
             self.localRepo.remotes.origin.pull()
         except self.git.exc.GitCommandError:

@@ -1599,7 +1599,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         hasNextPage = True
         after_cursor = None
         while hasNextPage:
-            result = self.ghJSON(['api', 'graphql', '-f', f'query={query}', '-f', 'searchQuery=topic:morphodepot fork:true', '-F', f'after={after_cursor if after_cursor else "null"}'])
+            result = self.ghJSON(['api', 'graphql', '--cache', '5m', '-f', f'query={query}', '-f', 'searchQuery=topic:morphodepot fork:true', '-F', f'after={after_cursor if after_cursor else "null"}'])
             if result and 'data' in result and 'search' in result['data']:
                 all_repos.extend([edge['node'] for edge in result['data']['search']['edges']])
                 hasNextPage = result['data']['search']['pageInfo']['hasNextPage']

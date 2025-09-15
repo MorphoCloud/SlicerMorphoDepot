@@ -504,10 +504,13 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
                 addedSegmentNames.add(segment.GetName())
             elif segmentationLogic.GetSegmentStatus(segment) != segmentationLogic.NotStarted:
                 modifiedSegmentNames.add(segment.GetName())
+            segmentName = segment.GetName()
+            if segmentName in self.segmentNamesByID.values() and segmentName != self.segmentNamesByID[segmentID]:
+                self.segmentNamesByID[segmentID] = segmentName
+                modifiedSegmentNames.add(segment.GetName())
+
 
         # Update UI
-        # Don't report which segments are modified unless we figure out how to detect it robustly:
-        # https://discourse.slicer.org/t/detecting-which-segments-have-been-modified/44453
         segmentationName = self.logic.segmentationNode.GetName()
         title = f"Edited {segmentationName}"
         body = ""

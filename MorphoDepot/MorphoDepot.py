@@ -1695,6 +1695,9 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         if localIssueBranch:
             logging.debug("Using existing local repository %s", localIssueBranch)
             self.localRepo.git.checkout(localIssueBranch)
+            self.ensureUpstreamExists()
+            pullResult = self.localRepo.git.pull("--rebase", "upstream", "main")
+            self.progressMethod(pullResult)
         else:
             logging.debug("Making new branch")
             if originBranchID in originBranchIDs:
@@ -1924,6 +1927,11 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     def approvePR(self, message=""):
         pr = self.issuePR(role="reviewer")
         upstreamNameWithOwner = self.nameWithOwner("upstream")
+        # TODO: this if the reviewer is also the creator of the PR
+        # this generates an error from github that you aren't allowed
+        # to approve your own PRs, but it's just a warning in this case.
+        # Checking the name to avoid the approval or just skipping
+        # approval since we are closing the PR anyway would be fine.
         commandList = f"""
             pr review {pr['number']}
                 --approve

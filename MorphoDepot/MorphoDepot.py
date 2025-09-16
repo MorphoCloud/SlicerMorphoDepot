@@ -1731,7 +1731,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             originMain = self.localRepo.remotes.origin.refs.main
             self.localRepo.head.ref.set_tracking_branch(originMain)
         try:
-            self.localRepo.remotes.origin.pull()
+            self.localRepo.remotes.origin.pull(rebase=True)
         except self.git.exc.GitCommandError:
             self.progressMethod(f"Error pulling origin")
             return False

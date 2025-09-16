@@ -1874,9 +1874,11 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         branchName = self.localRepo.active_branch.name
         remote = self.localRepo.remote(name="origin")
 
-        # rebase branch in case other changes have been made
-        pullResult = self.localRepo.git.pull(f"--rebase", "upstream", branchName)
-        self.progressMethod(pullResult)
+        # rebase branch if it exists in case other changes have been made (e.g. on another machine)
+        branchNames = [branch.name.split("/")[1] for branch in self.localRepo.remotes['origin'].refs]
+        if branchName in branchNames:
+            pullResult = self.localRepo.git.pull(f"--rebase", "origin", branchName)
+            self.progressMethod(pullResult)
 
         # Workaround for missing origin.push().raise_if_error() in 3.1.14
         # (see https://github.com/gitpython-developers/GitPython/issues/621):

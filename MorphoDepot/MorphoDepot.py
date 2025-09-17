@@ -2072,7 +2072,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         if self.addedScreenshots:
             screenshotsJSONPath = os.path.join(screenshotsDir, "screenshots.json")
             with open(screenshotsJSONPath, "w") as fp:
-                json.dump(self.addedScreenshots, f, indent=2)
+                json.dump(self.addedScreenshots, fp, indent=2)
             files_to_add.append(screenshotsJSONPath)
 
             for screenshot in self.addedScreenshots:

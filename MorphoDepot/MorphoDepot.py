@@ -2089,6 +2089,8 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
         repo.index.commit("Add source file url file")
         repo.remote(name="origin").push()
 
+        self.gh("config clear-cache"); # so the next morphoRepos call will include this repo
+
     #
     # Search
     #

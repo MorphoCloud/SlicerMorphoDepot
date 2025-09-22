@@ -8,7 +8,12 @@ set(MODULE_PYTHON_SCRIPTS
 
 set(MODULE_PYTHON_RESOURCES
   Resources/Icons/${MODULE_NAME}.png
-  Resources/UI/${MODULE_NAME}.ui
+  Resources/UI/${MODULE_NAME}Annotate.ui
+  Resources/UI/${MODULE_NAME}Create.ui
+  Resources/UI/${MODULE_NAME}Configure.ui
+  Resources/UI/${MODULE_NAME}Release.ui
+  Resources/UI/${MODULE_NAME}Review.ui
+  Resources/UI/${MODULE_NAME}Search.ui
   )
 
 #-----------------------------------------------------------------------------

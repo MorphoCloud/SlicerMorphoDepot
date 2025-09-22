@@ -1,19 +1,20 @@
 from contextlib import contextmanager
+from typing import Annotated, Optional
 import fnmatch
 import glob
 import json
 import locale
 import logging
+import math
 import os
-import shutil
 import platform
+import random
 import re
 import requests
+import shutil
 import subprocess
 import sys
 import traceback
-from typing import Annotated, Optional
-
 import qt
 
 import ctk
@@ -245,6 +246,33 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.configureUI.configureCollapsibleButton.layout().addWidget(self.configureUI.adminModeCheckBox)
         adminMode = slicer.util.settingsValue("MorphoDepot/adminMode", False, converter=slicer.util.toBool)
         self.configureUI.adminModeCheckBox.checked = adminMode
+
+        # Testing
+        self.configureUI.testingCollapsibleButton = ctk.ctkCollapsibleButton()
+        self.configureUI.testingCollapsibleButton.text = "Testing"
+        self.configureUI.testingCollapsibleButton.collapsed = True
+        self.configureUI.configureCollapsibleButton.layout().addWidget(self.configureUI.testingCollapsibleButton)
+        self.configureUI.testingCollapsibleButton.visible = slicer.util.settingsValue("Developer/DeveloperMode", False, converter=slicer.util.toBool)
+
+        testingLayout = qt.QFormLayout(self.configureUI.testingCollapsibleButton)
+
+        self.configureUI.creatorUser = qt.QLineEdit()
+        self.configureUI.creatorUser.text = slicer.util.settingsValue("MorphoDepot/testingCreatorUser", "")
+        self.configureUI.creatorUser.toolTip = "GitHub user account for creating repositories in tests. Must be logged in via 'gh auth login' with 'delete_repo' scope."
+        testingLayout.addRow("Creator:", self.configureUI.creatorUser)
+
+        self.configureUI.annotatorUser = qt.QLineEdit()
+        self.configureUI.annotatorUser.text = slicer.util.settingsValue("MorphoDepot/testingAnnotatorUser", "")
+        self.configureUI.annotatorUser.toolTip = "GitHub user account for annotating in tests. Must be logged in via 'gh auth login'."
+        testingLayout.addRow("Annotator:", self.configureUI.annotatorUser)
+
+        # Connections for testing widgets
+        self.configureUI.creatorUser.editingFinished.connect(
+            lambda: qt.QSettings().setValue("MorphoDepot/testingCreatorUser", self.configureUI.creatorUser.text)
+        )
+        self.configureUI.annotatorUser.editingFinished.connect(
+            lambda: qt.QSettings().setValue("MorphoDepot/testingAnnotatorUser", self.configureUI.annotatorUser.text)
+        )
 
         # Create
         self.createUI.inputSelector = slicer.qMRMLNodeComboBox()
@@ -706,7 +734,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             repoName,owner = self.repoDataKetToRepoNameAndOwner(repoDataKey)
             species = repoData.get('species', [None, "N/A"])[1]
             modality = repoData.get('modality', [None, "N/A"])[1]
-            
+
             spacingText = "N/A"
             spacingStr = repoData.get('scanSpacing')
             if spacingStr:
@@ -1334,6 +1362,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.segmentationNode = None
         self.segmentationPath = None
         self.localRepo = None
+        self.currentIssue = None
         self.progressMethod = progressMethod if progressMethod else lambda *args : None
         self.gitExecutablesDir = None
         self.gitExecutablePath = None
@@ -1579,11 +1608,10 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         result = process.communicate()
         locale.setlocale(locale.LC_ALL, originalLocale)
         if process.returncode != 0:
-            logging.error("gh command failed:")
-            logging.error(commandList)
-            logging.error(result)
+            error_message = f"gh command failed: {' '.join(commandList)}\nOutput: {result}"
+            logging.error(error_message)
             self.progressMethod(f"gh command error: {result}")
-            return None
+            raise RuntimeError(error_message)
         self.progressMethod(f"gh command finished: {result}")
         return result[0]
 
@@ -1674,6 +1702,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
     @gitEnvironmentDecorator
     def loadIssue(self, issue, repoDirectory):
+        self.currentIssue = issue
         self.progressMethod(f"Loading issue {issue} into {repoDirectory}")
         issueNumber = issue['number']
         branchName=f"issue-{issueNumber}"
@@ -1899,6 +1928,10 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             upstreamNameWithOwner = self.nameWithOwner("upstream")
             originNameWithOwner = self.nameWithOwner("origin")
             originOwner = originNameWithOwner.split("/")[0]
+            prBody = f"Fixes #{issueNumber}"
+            if self.currentIssue and 'author' in self.currentIssue and 'login' in self.currentIssue['author']:
+                authorLogin = self.currentIssue['author']['login']
+                prBody = f"Started work on this issue for @{authorLogin}. {prBody}"
             commandList = f"""
                 pr create
                 --draft
@@ -1907,12 +1940,16 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 --title {branchName}
                 --head {originOwner}:{branchName}
             """.replace("\n"," ").split()
-            commandList += ["--body", f" Fixes #{issueNumber}"]
+            commandList += ["--body", prBody]
             self.gh(commandList)
         return True
 
     def requestReview(self):
         pr = self.issuePR(role="segmenter")
+        if not pr:
+            logging.error("No pull request found for the current issue branch.")
+            return
+
         upstreamNameWithOwner = self.nameWithOwner("upstream")
         self.gh(f"""
             pr ready {pr['number']}
@@ -2186,18 +2223,231 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
         self.setUp()
         self.test_MorphoDepot1()
 
+    def _generate_random_species_name(self):
+        """Generates a random species-like name for testing."""
+        genus_prefixes = ["Testudo", "Pseudo", "Archeo", "Pico", "Nano", "Slicero"]
+        genus_suffixes = ["saurus", "therium", "pithecus", "don", "raptor", "morpho"]
+        species_epithets = ["minimus", "maximus", "communis", "vulgaris", "testus", "exempli"]
+
+        genus = random.choice(genus_prefixes) + random.choice(genus_suffixes).lower()
+        species = random.choice(species_epithets)
+
+        # Create a unique repository name from the species name
+        repo_name = f"test-{genus.lower()}-{species.lower()}-{math.floor(1000*random.random())}"
+        species_name = f"{genus.capitalize()} {species.lower()}"
+        return repo_name, species_name
+
     def test_MorphoDepot1(self):
-        """Ideally you should have several levels of tests.  At the lowest level
-        tests should exercise the functionality of the logic with different inputs
-        (both valid and invalid).  At higher levels your tests should emulate the
-        way the user would interact with your code and confirm that it still works
-        the way you intended.
-        One of the most important features of the tests is that it should alert other
-        developers when their changes will have an impact on the behavior of your
-        module.  For example, if a developer removes a feature that you depend on,
-        your test should break so they know that the feature is needed.
+        """
+        This test emulates the repository creation and issue assignment workflow.
         """
 
-        self.delayDisplay("Starting the test")
+        self.delayDisplay("Starting MorphoDepot flow test")
+
+        # 1. Get creator and annotator accounts from settings
+        creator = slicer.util.settingsValue("MorphoDepot/testingCreatorUser", "")
+        annotator = slicer.util.settingsValue("MorphoDepot/testingAnnotatorUser", "")
+        if not creator and annotator:
+            print("Creator and Annotator users must be set in Configure tab's Testing section")
+            return
+
+        widget = slicer.modules.MorphoDepotWidget
+        logic = widget.logic
+
+        # Helper function for switching user
+        def switchUser(username):
+            self.delayDisplay(f"Switching gh auth to {username}")
+            logic.gh(["auth", "switch", "--user", username])
+
+        # 2. Switch to Creator auth
+        switchUser(creator)
+        self.delayDisplay("Creating a test repository")
+        widget.tabWidget.setCurrentWidget(widget.createUI.createRepository.parent().parent())
+
+        # Use sample data for volume and color table
+        import SampleData
+        volumeNode = SampleData.SampleDataLogic().downloadMRHead()
+        self.assertIsNotNone(volumeNode, "Failed to download MRHead sample data.")
+        colorTable = slicer.util.getNode("Labels")
+        widget.createUI.inputSelector.setCurrentNode(volumeNode)
+        widget.createUI.colorSelector.setCurrentNode(colorTable)
+
+        # Fill out the accession form
+        form = widget.createUI.accessionForm
+        repoName, speciesName = self._generate_random_species_name()
+        form.questions["specimenSource"].optionButtons["Commercially acquired"].click()
+        form.questions["species"].answerText.text = speciesName
+        form.questions["biologicalSex"].optionButtons["Unknown"].click()
+        form.questions["developmentalStage"].optionButtons["Adult"].click()
+        form.questions["modality"].optionButtons["Micro CT (or synchrotron)"].click()
+        form.questions["contrastEnhancement"].optionButtons["No"].click()
+        form.questions["imageContents"].optionButtons["Whole specimen"].click()
+        form.questions["redistributionAcknowledgement"].optionButtons["I have the right to allow redistribution of this data."].click()
+        form.questions["license"].optionButtons["CC BY 4.0 (requires attribution, allows commercial usage)"].click()
+        form.questions["githubRepoName"].answerText.text = f"MorphoDepotTesting/{repoName}"
+        repoNameWithOwner = form.questions["githubRepoName"].answerText.text
+
+        # Create the repository
+        widget.onCreateRepository()
+        slicer.app.processEvents()
+        self.delayDisplay(f"Repository {repoName} created.")
+
+        # Open the repository page
+        self.delayDisplay(f"Opening repository page for {repoNameWithOwner}")
+        repoURL = qt.QUrl(f"https://github.com/{repoNameWithOwner}")
+        qt.QDesktopServices.openUrl(repoURL)
+
+        # 3. Create two sample issues as Creator
+        self.delayDisplay("Creating sample issues")
+        issue1_title = "Segment the cranium"
+        issue2_title = "Segment the mandible"
+        logic.gh(["issue", "create", "--repo", repoNameWithOwner, "--title", issue1_title, "--body", "Please segment the entire cranium."])
+        logic.gh(["issue", "create", "--repo", repoNameWithOwner, "--title", issue2_title, "--body", "Please segment the left and right dentary."])
+
+        # 5. Switch to Annotator auth
+        switchUser(annotator)
+
+        # 6. List issues and comment as Annotator
+        self.delayDisplay("Listing and commenting on issues as Annotator")
+        issues = logic.ghJSON(f"issue list --repo {repoNameWithOwner} --json number,title")
+        self.assertEqual(len(issues), 2)
+
+        for issue in issues:
+            issueNumber = issue['number']
+            self.delayDisplay(f"Commenting on issue #{issueNumber}")
+            logic.gh(["issue", "comment", str(issueNumber), "--repo", repoNameWithOwner, "--body", "I would like to work on this issue."])
+
+        # 7. Switch back to Creator auth
+        switchUser(creator)
+
+        # 8. Assign issues to the Annotator
+        self.delayDisplay("Assigning issues to Annotator")
+        issues = logic.ghJSON(f"issue list --repo {repoNameWithOwner} --json number,title")
+        for issue in issues:
+            issueNumber = issue['number']
+            self.delayDisplay(f"Assigning issue #{issueNumber} to {annotator}")
+            logic.gh(["issue", "edit", str(issueNumber), "--repo", repoNameWithOwner, "--add-assignee", annotator])
+
+        # Verify assignment
+        assignedIssues = logic.ghJSON(f"issue list --repo {repoNameWithOwner} --assignee {annotator} --json number")
+        self.assertEqual(len(assignedIssues), 2, f"Expected 2 issues to be assigned to {annotator}")
+
+        # 9. Switch to Annotator to work on issues
+        switchUser(annotator)
+        self.delayDisplay("Annotator listing assigned issues")
+        annotatorIssues = logic.issueList()
+        # filter for the repo we just created
+        annotatorIssues = [issue for issue in annotatorIssues if issue['repository']['nameWithOwner'] == repoNameWithOwner]
+        self.assertEqual(len(annotatorIssues), 2, f"Annotator should have 2 issues for repo {repoNameWithOwner}.")
+
+        # 10. Annotator loads each issue, makes a change, and creates a PR.
+        repoDirectory = logic.localRepositoryDirectory()
+        for issue in annotatorIssues:
+            self.delayDisplay(f"Annotator working on issue #{issue['number']}: {issue['title']}")
+
+            # Load issue
+            slicer.mrmlScene.Clear()
+            logic.loadIssue(issue, repoDirectory)
+
+            # Check that things are loaded
+            self.assertIsNotNone(logic.segmentationNode, "Segmentation node should be loaded.")
+            self.assertTrue(len(slicer.util.getNodesByClass("vtkMRMLScalarVolumeNode")) > 0, "Volume node should be loaded.")
+
+            # Make an arbitrary change to the segmentation
+            self.delayDisplay("Making an arbitrary change to the segmentation")
+            segmentation = logic.segmentationNode.GetSegmentation()
+            segmentation.AddEmptySegment(f"test-segment-by-annotator-{issue['title']}")
+
+            # Commit and push, which creates a draft PR
+            commitMessage = f"Work on issue #{issue['number']}"
+            self.delayDisplay(f"Committing and creating PR for issue #{issue['number']}")
+            self.assertTrue(logic.commitAndPush(commitMessage), f"Failed to commit and push for issue #{issue['number']}")
+            widget.annotateUI.messageTitle.text = commitMessage
+            widget.onCommit()
+            slicer.app.processEvents()
+
+            # 11. Annotator requests review for the PR
+            self.delayDisplay(f"Requesting review for work on issue #{issue['number']}")
+            widget.onRequestReview()
+            slicer.app.processEvents()
+
+        # 12. Switch to Creator to review the PRs
+        switchUser(creator)
+        self.delayDisplay("Creator reviewing PRs")
+        widget.updateReviewPRList()
+        self.assertEqual(widget.reviewUI.prList.count, 2, "Expected 2 PRs for review.")
+
+        # Approve the first PR and request changes on the second
+        itemToApprove = widget.reviewUI.prList.item(0)
+        prToApprove = widget.prsByItem[itemToApprove]
+        itemToRequestChanges = widget.reviewUI.prList.item(1)
+        prToRequestChanges = widget.prsByItem[itemToRequestChanges]
+
+        # Approve the first PR
+        self.delayDisplay(f"Approving and merging PR #{prToApprove['number']}")
+        slicer.mrmlScene.Clear()
+        logic.loadPR(prToApprove, repoDirectory)
+        widget.reviewUI.reviewMessage.plainText = "Looks good!"
+        widget.onApprove()
+        slicer.app.processEvents()
+
+        # Request changes on the second PR
+        self.delayDisplay(f"Requesting changes on PR #{prToRequestChanges['number']}")
+        slicer.mrmlScene.Clear()
+        logic.loadPR(prToRequestChanges, repoDirectory)
+        widget.reviewUI.reviewMessage.plainText = "Please add another segment."
+        widget.onRequestChanges()
+        slicer.app.processEvents()
+
+        # 13. Switch to Annotator to address feedback
+        switchUser(annotator)
+        self.delayDisplay("Annotator addressing feedback")
+
+        # Find the issue that needs changes
+        issueForChanges = next(issue for issue in annotatorIssues if f"issue-{issue['number']}" == prToRequestChanges['title'])
+
+        # Load the issue, make a change, and request review again
+        slicer.mrmlScene.Clear()
+        logic.loadIssue(issueForChanges, repoDirectory)
+        self.delayDisplay("Making an additional change to the segmentation")
+        segmentation = logic.segmentationNode.GetSegmentation()
+        segmentation.AddEmptySegment("additional-annotator-segment")
+
+        commitMessage = f"Addressing feedback on issue #{issueForChanges['number']}"
+        widget.annotateUI.messageTitle.text = commitMessage
+        widget.onCommit()
+        slicer.app.processEvents()
+        widget.onRequestReview()
+        slicer.app.processEvents()
+        logic.gh(f"pr comment {prToRequestChanges['number']} --repo {repoNameWithOwner} --body 'I have addressed the feedback. Ready for another look.'")
+
+        # 14. Switch back to Creator to approve the updated PR
+        switchUser(creator)
+        self.delayDisplay(f"Creator approving updated PR #{prToRequestChanges['number']}")
+        slicer.mrmlScene.Clear()
+        logic.loadPR(prToRequestChanges, repoDirectory)
+        widget.reviewUI.reviewMessage.plainText = "Thanks for the update!"
+        widget.onApprove()
+        slicer.app.processEvents()
+
+        # 15. Create a release and open the repository page
+        self.delayDisplay("Creating a new release")
+        widget.tabWidget.setCurrentWidget(widget.releaseUI.repoList.parent().parent())
+        widget.onRefreshReleaseTab()
+        slicer.app.processEvents()
+
+        # Find and select the repository in the list
+        repoItem = None
+        for i in range(widget.releaseUI.repoList.count):
+            item = widget.releaseUI.repoList.item(i)
+            if item.text() == repoNameWithOwner:
+                repoItem = item
+                break
+        self.assertIsNotNone(repoItem, f"Repository {repoNameWithOwner} not found in release list.")
+        widget.onReleaseRepoDoubleClicked(repoItem)
+        widget.releaseUI.releaseCommentsEdit.plainText = "First segmentation complete."
+        widget.onMakeRelease()
+
+        #logic.gh(f"repo delete {repoNameWithOwner} --yes")
 
         self.delayDisplay("Test passed")

@@ -15,6 +15,7 @@ import requests
 import shutil
 import subprocess
 import sys
+import time
 import traceback
 import qt
 
@@ -1428,11 +1429,19 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.progressMethod(" ".join(commandList))
         fullCommandList = [self.ghExecutablePath] + commandList
 
-        originalLocale = locale.setlocale(locale.LC_ALL)
-        locale.setlocale(locale.LC_ALL, "en_US.UTF-8")
-        process = slicer.util.launchConsoleProcess(fullCommandList)
-        result = process.communicate()
-        locale.setlocale(locale.LC_ALL, originalLocale)
+        baseDelay = 1
+        attempts = 5
+        for attempt in range(attempts):
+            originalLocale = locale.setlocale(locale.LC_ALL)
+            locale.setlocale(locale.LC_ALL, "en_US.UTF-8")
+            process = slicer.util.launchConsoleProcess(fullCommandList)
+            result = process.communicate()
+            locale.setlocale(locale.LC_ALL, originalLocale)
+            if process.returncode == 0:
+                break
+            delay = baseDelay * (2 ** attempt)
+            self.progressMethod(f"gh returned {process.returncode}, sleeping {delay} seconds before retry")
+            time.sleep(delay)
         if process.returncode != 0:
             error_message = f"gh command failed: {' '.join(commandList)}\nOutput: {result}"
             logging.error(error_message)

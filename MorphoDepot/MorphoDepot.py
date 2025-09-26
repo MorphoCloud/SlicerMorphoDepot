@@ -401,7 +401,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         prList = self.logic.prList(role="segmenter")
         for pr in prList:
             prStatus = 'draft' if pr['isDraft'] else 'ready for review'
-            prTitle = f"{pr['issueTitle']} {pr['repository']['nameWithOwner']}: {pr['title']} ({prStatus})"
+            prTitle = f"{pr['title']} {pr['repository']['nameWithOwner']}: {prStatus}"
             item = qt.QListWidgetItem(prTitle)
             self.prsByItem[item] = pr
             self.annotateUI.prList.addItem(item)
@@ -566,7 +566,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             prList = self.logic.prList(role="reviewer")
             for pr in prList:
                 prStatus = 'draft' if pr['isDraft'] else 'ready for review'
-                prTitle = f"{pr['issueTitle']} {pr['repository']['nameWithOwner']}: {pr['title']} ({prStatus})"
+                prTitle = f"{pr['title']} {pr['repository']['nameWithOwner']}: {prStatus}"
                 item = qt.QListWidgetItem(prTitle)
                 self.prsByItem[item] = pr
                 self.reviewUI.prList.addItem(item)
@@ -1407,7 +1407,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         fullCommandList = [self.ghExecutablePath] + commandList
 
         baseDelay = 1
-        attempts = 5
+        attempts = 4
         for attempt in range(attempts):
             originalLocale = locale.setlocale(locale.LC_ALL)
             locale.setlocale(locale.LC_ALL, "en_US.UTF-8")
@@ -1416,6 +1416,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             locale.setlocale(locale.LC_ALL, originalLocale)
             if process.returncode == 0:
                 break
+            error_message = f"gh command failed: {' '.join(commandList)}\nOutput: {result}"
+            print(error_message)
             delay = baseDelay * (2 ** attempt)
             self.progressMethod(f"gh returned {process.returncode}, sleeping {delay} seconds before retry")
             time.sleep(delay)
@@ -1434,47 +1436,89 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             return json.loads(jsonString)
         return []
 
+    def ghTopicClearCache(self):
+        self.gh("config clear-cache")
+
+    def ghTopicData(self, topic="MorphoDepot"):
+        query="""
+            query($params: String!) {
+                search(query: $params, type: REPOSITORY, first: 100) {
+                    nodes {
+                        ... on Repository {
+                            nameWithOwner
+                            pullRequests(states: [OPEN], first: 20) {
+                                nodes {
+                                    number title isDraft url
+                                    author { login }
+                                    closingIssuesReferences(first: 1) {
+                                      nodes { title author {login} }
+                                    }
+                                }
+                            }
+                            issues(states: [OPEN], first: 20) {
+                                nodes {
+                                    number title url author { login }
+                                    assignees(first: 5) { nodes { login } }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        """
+        params = f"topic:{topic} fork:true"
+        command = ['api', 'graphql', "--cache", "10m", '--paginate', '--slurp',
+                   '-f', f'query={query}', '-f', f'params={params}']
+        searchData = self.ghJSON(command)
+        return searchData[0]['data']['search']['nodes']
+
     def morphoRepos(self):
         # TODO: generalize for other topics
         query = """
-            query($searchQuery: String!, $after: String) {
-              search(query: $searchQuery, type: REPOSITORY, first: 100, after: $after) {
-                repositoryCount
-                edges {
-                  node {
-                    ... on Repository {
-                      name
-                      owner {
-                        login
-                      }
+            query($searchQuery: String!) {
+              search(query: $searchQuery, type: REPOSITORY, first: 100) {
+                nodes {
+                  ... on Repository {
+                    name
+                    owner {
+                      login
                     }
                   }
-                }
-                pageInfo {
-                  endCursor
-                  hasNextPage
                 }
               }
             }
         """
-        all_repos = []
-        hasNextPage = True
-        after_cursor = None
-        while hasNextPage:
-            result = self.ghJSON(['api', 'graphql', '--cache', '5m', '-f', f'query={query}', '-f', 'searchQuery=topic:morphodepot fork:true', '-F', f'after={after_cursor if after_cursor else "null"}'])
-            if result and 'data' in result and 'search' in result['data']:
-                all_repos.extend([edge['node'] for edge in result['data']['search']['edges']])
-                hasNextPage = result['data']['search']['pageInfo']['hasNextPage']
-                after_cursor = result['data']['search']['pageInfo']['endCursor']
-            else:
-                hasNextPage = False
+        search_query_string = "topic:morphodepot fork:true"
+        command = ['api', 'graphql', '--paginate', '--slurp',
+                   '-f', f'query={query}', '-f', f'searchQuery={search_query_string}']
+        pages = self.ghJSON(command)
+        all_repos = [repo for page in pages for repo in page['data']['search']['nodes'] if repo]
+
         return all_repos
 
-    def issueList(self):
+    def whoami(self):
+        """ Get the active gh account """
+        return(self.gh("auth status --active").split()[7])
+
+    def issueListOld(self):
         repoList = self.morphoRepos()
         candiateIssueList = self.ghJSON(f"search issues --limit 1000 --assignee=@me --state open --json repository,title,number")
         repoNamesWithOwner = [f"{repo['owner']['login']}/{repo['name']}" for repo in repoList]
         issueList = [issue for issue in candiateIssueList if issue['repository']['nameWithOwner'] in repoNamesWithOwner]
+        return issueList
+
+    def issueList(self):
+        me = self.whoami()
+        repoData = self.ghTopicData()
+        issueList = []
+        for repo in repoData:
+            for issue in repo['issues']['nodes']:
+                assignees = [node['login'] for node in issue['assignees']['nodes']]
+                if me in assignees:
+                    repoName = repo['nameWithOwner'].split("/")[1]
+                    issueList.append({'number': issue['number'],
+                                      'title': issue['title'],
+                                      'repository': { 'name': repoName, 'nameWithOwner': repo['nameWithOwner']}})
         return issueList
 
     def ownedRepoList(self):
@@ -1484,22 +1528,132 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         return repos
 
     def prList(self, role="segmenter"):
-        repoList = self.morphoRepos()
-        repoNamesWithOwner = [f"{repo['owner']['login']}/{repo['name']}" for repo in repoList]
-        if role == "segmenter":
-            searchString = "--author=@me"
-        elif role == "reviewer":
-            searchString = "--owner=@me"
-        jsonFields = "title,number,author,isDraft,updatedAt,repository"
-        candidatePRList = self.ghJSON(f"search prs --limit 1000 --state open --json {jsonFields} {searchString}")
-        prList = [pr for pr in candidatePRList if pr['repository']['nameWithOwner'] in repoNamesWithOwner]
-        for pr in prList:
-            issues = self.ghJSON(f"issue list --repo {pr['repository']['nameWithOwner']} --json title,number --state open")
-            pr['issueTitle'] = "issue not found"
-            for issue in issues:
-                if pr['title'] == f"issue-{issue['number']}":
-                    pr['issueTitle'] = issue['title']
+        """
+        Fetch a list of open pull requests for the user, either as 'segmenter' or reviewer.
+        Returns PRs, their associated issue titles, and repository topics.
+        """
+        me = self.whoami()
+        repoData = self.ghTopicData()
+        prList = []
+        for repo in repoData:
+            for pr in repo['pullRequests']['nodes']:
+                if role == "segmenter":
+                    parties = [pr['author']['login']]
+                elif role == "reviewer":
+                    parties = [issue['author']['login'] for issue in pr['closingIssuesReferences']['nodes']]
+                else:
+                    raise BaseException(f"Unknown role {role}")
+                if me in parties:
+                    repoName = repo['nameWithOwner'].split("/")[1]
+                    prList.append({'number': pr['number'],
+                                      'title': pr['title'],
+                                      'isDraft': pr['isDraft'],
+                                      'author': {'login': pr['author']['login']},
+                                      'repository': { 'name': repoName, 'nameWithOwner': repo['nameWithOwner']}})
         return prList
+
+        oldPRListCodee = '''
+                search_qualifier = ""
+                if role == "segmenter":
+                    search_qualifier = "author:@me"
+                elif role == "reviewer":
+                    # 'involves' includes mentions, assignments, and review requests.
+                    search_qualifier = "involves:@me"
+
+                # This GraphQL query searches for open PRs based on the user's role.
+                # For each PR, it fetches details including the title of any linked issues.
+                query = """
+                    query($searchQuery: String!) {{
+                      search(query: $searchQuery, type: ISSUE, first: 100) {{
+                        nodes {{
+                          ... on PullRequest {{
+                            title
+                            number
+                            isDraft
+                            updatedAt
+                            author {{
+                              login
+                            }}
+                            repository {{
+                              nameWithOwner
+                            }}
+                            closingIssuesReferences(first: 1) {{
+                              nodes {{
+                                title
+                              }}
+                            }}
+                          }}
+                        }}
+                      }}
+                    }}
+                """
+                search_query_string = f"is:pr is:open topic:morphodepot {search_qualifier}"
+                command = ['api', 'graphql', '--paginate', '--slurp',
+                           '-f', f'query={query}', '-f', f'searchQuery={search_query_string}']
+
+                pages = self.ghJSON(command)
+                prList = [pr for page in pages for pr in page['data']['search']['nodes'] if pr]
+
+                for pr in prList:
+                    # Extract the issue title from the nested structure
+                    issue_nodes = pr.get('closingIssuesReferences', {}).get('nodes', [])
+                    pr['issueTitle'] = issue_nodes[0]['title'] if issue_nodes else "issue not found"
+
+                return prList
+
+            def prList(self, role="segmenter"):
+                """
+                Fetch a list of open pull requests for the user, either as an author ('segmenter')
+                or as a reviewer. This method uses a single GraphQL query to efficiently
+                retrieve PRs, their associated issue titles, and repository topics.
+                """
+                search_qualifier = ""
+                if role == "segmenter":
+                    search_qualifier = "author:@me"
+                elif role == "reviewer":
+                    search_qualifier = "involves:@me"
+
+                # This GraphQL query searches for open PRs based on the user's role.
+                # For each PR, it fetches details including the title of any linked issues.
+                query = """
+                    query($searchQuery: String!) {{
+                      search(query: $searchQuery, type: ISSUE, first: 100) {{
+                        nodes {{
+                          ... on PullRequest {{
+                            title
+                            number
+                            isDraft
+                            updatedAt
+                            author {{
+                              login
+                            }}
+                            repository {{
+                              nameWithOwner
+                            }}
+                            closingIssuesReferences(first: 1) {{
+                              nodes {{
+                                title
+                              }}
+                            }}
+                          }}
+                        }}
+                      }}
+                    }}
+                """
+                search_query_string = f"is:pr is:open topic:morphodepot {search_qualifier}"
+                command = ['api', 'graphql', '--paginate', '--slurp',
+                           '-f', f'query={query}', '-f', f'searchQuery={search_query_string}']
+
+                pages = self.ghJSON(command)
+                prList = [pr for page in pages for pr in page['data']['search']['nodes'] if pr]
+
+                for pr in prList:
+                    # Extract the issue title from the nested structure
+                    issue_nodes = pr.get('closingIssuesReferences', {}).get('nodes', [])
+                    pr['issueTitle'] = issue_nodes[0]['title'] if issue_nodes else "issue not found"
+
+                return prList
+        '''
 
     def repositoryList(self):
         repositories = json.loads(self.gh("repo list --json name"))
@@ -1518,12 +1672,13 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         branchName=f"issue-{issueNumber}"
         sourceRepository = issue['repository']['nameWithOwner']
         repositoryName = issue['repository']['name']
-        localDirectory = f"{repoDirectory}/{repositoryName}-{branchName}"
+        localDirectory = os.path.join(repoDirectory, f"{repositoryName}-{branchName}")
 
-        if not os.path.exists(localDirectory):
-            if repositoryName not in self.repositoryList():
-                self.gh(f"repo fork {sourceRepository} --remote=true --clone=false")
-            self.gh(f"repo clone {repositoryName} {localDirectory}")
+        self.cacheOldVersion(localDirectory)
+
+        if repositoryName not in self.repositoryList():
+            self.gh(f"repo fork {sourceRepository} --remote=true --clone=false")
+        self.gh(f"repo clone {repositoryName} {localDirectory}")
         self.localRepo = git.Repo(localDirectory)
         self.ensureUpstreamExists()
 
@@ -1537,56 +1692,44 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 localIssueBranch = branch
                 break
 
-        if localIssueBranch:
-            logging.debug("Using existing local repository %s", localIssueBranch)
-            self.localRepo.git.checkout(localIssueBranch)
-            self.ensureUpstreamExists()
-            pullResult = self.localRepo.git.pull("--rebase", "upstream", "main")
-            self.progressMethod(pullResult)
+        logging.debug("Making new branch")
+        if originBranchID in originBranchIDs:
+            logging.debug("Checking out existing from origin")
+            self.localRepo.git.execute(f"git checkout --track {originBranchID}".split())
         else:
-            logging.debug("Making new branch")
-            if originBranchID in originBranchIDs:
-                logging.debug("Checking out existing from origin")
-                self.localRepo.git.execute(f"git checkout --track {originBranchID}".split())
-            else:
-                logging.debug("Nothing local or remote, nothing in origin so make new branch %s", branchName)
-                self.localRepo.git.checkout("origin/main")
-                self.localRepo.git.branch(branchName)
-                self.localRepo.git.checkout(branchName)
+            logging.debug("Nothing local or remote, nothing in origin so make new branch %s", branchName)
+            self.localRepo.git.checkout("origin/main")
+            self.localRepo.git.branch(branchName)
+            self.localRepo.git.checkout(branchName)
 
         self.loadFromLocalRepository()
 
     def loadPR(self, pr, repoDirectory):
         branchName = pr['title']
-        repositoryName = f"{pr['author']['login']}/{pr['repository']['name']}"
-        localDirectory = f"{repoDirectory}/{pr['repository']['name']}-{branchName}"
-        self.progressMethod(f"Loading issue {repositoryName} into {localDirectory}")
+        repoNameWithOwner = f"{pr['author']['login']}/{pr['repository']['name']}"
+        localDirectory = os.path.join(repoDirectory, f"{pr['repository']['name']}-{branchName}")
+        self.progressMethod(f"Loading PR from {repoNameWithOwner} into {localDirectory}")
 
-        if not os.path.exists(localDirectory):
-            self.gh(f"repo clone {repositoryName} {localDirectory}")
+        self.cacheOldVersion(localDirectory)
+
+        self.gh(f"repo clone {repoNameWithOwner} {localDirectory}")
         self.localRepo = git.Repo(localDirectory)
         self.ensureUpstreamExists()
         self.localRepo.remotes.origin.fetch()
         self.localRepo.git.checkout(branchName)
-        if not self.localRepo.head.ref.tracking_branch():
-            originMain = self.localRepo.remotes.origin.refs.main
-            self.localRepo.head.ref.set_tracking_branch(originMain)
-        try:
-            self.localRepo.remotes.origin.pull(rebase=True)
-        except git.exc.GitCommandError:
-            self.progressMethod(f"Error pulling origin")
-            return False
 
         self.loadFromLocalRepository()
         return True
 
     def loadRepoForRelease(self, repoData):
         repoName = repoData['name']
-        repoNameWithOwner = repoData['nameWithOwner']
+        repoNameWithOwner = repoData['nameWithOwner'] # this is owner/name
         localDirectory = os.path.join(self.localRepositoryDirectory(), repoName)
 
-        if not os.path.exists(localDirectory):
-            self.gh(f"repo clone {repoNameWithOwner} {localDirectory}")
+        self.cacheOldVersion(localDirectory)
+
+        # clone the main repo, not a fork
+        self.gh(f"repo clone {repoNameWithOwner} {localDirectory}")
 
         self.localRepo = git.Repo(localDirectory)
         self.localRepo.git.checkout("main")
@@ -1597,9 +1740,9 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         repoName = repoNameWithOwner.split('/')[1]
         localDirectory = os.path.join(self.localRepositoryDirectory(), repoName)
 
-        if not os.path.exists(localDirectory):
-            print(f"repo clone {repoNameWithOwner} {localDirectory}")
-            self.gh(f"repo clone {repoNameWithOwner} {localDirectory}")
+        self.cacheOldVersion(localDirectory)
+
+        self.gh(f"repo clone {repoNameWithOwner} {localDirectory}")
 
         self.localRepo = git.Repo(localDirectory)
         self.localRepo.git.checkout("main")
@@ -1624,14 +1767,20 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 self.ghProgressMethod(f"No color table found")
 
         # TODO: move from single volume file to segmentation specification json
-        # TODO: save checksum in source_volume file to verify when downloading later
         volumePath = os.path.join(localDirectory, "source_volume")
         if not os.path.exists(volumePath):
             volumePath = os.path.join(localDirectory, "master_volume") # for backwards compatibility
         volumeURL = open(volumePath).read().strip()
-        nrrdPath = os.path.join(localDirectory, f"{remoteNameWithOwner.replace('/', '-')}-volume.nrrd")
+        cacheDirectory = os.path.join(self.localRepositoryDirectory(), "MorphoDepotCaches", "Volumes")
+        os.makedirs(cacheDirectory, exist_ok=True)
+        nrrdPath = os.path.join(cacheDirectory, f"{remoteNameWithOwner.replace('/', '-')}-volume.nrrd")
+        checksum = None
+        checksumFilePath = os.path.join(localDirectory, "source_volume_checksum")
+        if os.path.exists(checksumFilePath):
+            with open(checksumFilePath) as fp:
+                checksum = fp.read().strip()
         if not os.path.exists(nrrdPath):
-            slicer.util.downloadFile(volumeURL, nrrdPath)
+            slicer.util.downloadFile(volumeURL, nrrdPath, checksum=checksum)
         volumeNode = slicer.util.loadVolume(nrrdPath)
 
         # Load all segmentations
@@ -1671,6 +1820,16 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             # git ssh prototocol
             repoURL = "/".join(repoURL.split(":"))
             repoNameWithOwner = "/".join(repoURL.split("/")[-2:]).split(".")[0]
+        elif repoURL.startswith("https://"):
+            # https protocol
+            repoNameWithOwner = "/".join(repoURL.split("/")[-2:]).split(".")[0]
+        elif repoURL.startswith("git@"):
+            # git@github.com:owner/repo.git
+            repoNameWithOwner = repoURL.split(":")[1].replace(".git", "")
+        elif os.path.exists(repoURL):
+            # local path
+            # this case happens during repo creation before pushing to remote
+            return None
         else:
             # https protocol
             repoNameWithOwner = "/".join(repoURL.split("/")[-2:]).split(".")[0]
@@ -1693,6 +1852,17 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             if prRepoNameWithOwner == upstreamNameWithOwner and pr['title'] == branchName:
                 issuePR = pr
         return issuePR
+
+    def cacheOldVersion(self, directoryPath):
+        """If directoryPath exists, move it to an archive in the cache."""
+        if os.path.exists(directoryPath):
+            self.progressMethod(f"Archiving old version of {directoryPath}")
+            cacheDirectory = os.path.join(self.localRepositoryDirectory(), "MorphoDepotCaches", "OldRepositories")
+            os.makedirs(cacheDirectory, exist_ok=True)
+            timestamp = time.strftime("%Y%m%d-%H%M%S")
+            archiveName = f"{os.path.basename(directoryPath)}-{timestamp}"
+            archivePath = os.path.join(cacheDirectory, archiveName)
+            shutil.move(directoryPath, archivePath)
 
     def commitAndPush(self, message):
         """Create a PR if needed and push current segmentation
@@ -1837,6 +2007,13 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         sourceFileName = sourceVolume.GetName()
         sourceFilePath = os.path.join(repoDir, sourceFileName) + ".nrrd"
         slicer.util.saveNode(sourceVolume, sourceFilePath)
+
+        # calculate and save checksum
+        checksum = slicer.util.computeChecksum('SHA256', sourceFilePath)
+        checksumFilePath = os.path.join(repoDir, "source_volume_checksum")
+        with open(checksumFilePath, "w") as fp:
+            fp.write(f"SHA256:{checksum}")
+
         colorTableName = colorTable.GetName()
         slicer.util.saveNode(colorTable, os.path.join(repoDir, colorTableName) + ".csv")
         repoFileNames.append(f"{colorTableName}.csv")
@@ -1894,6 +2071,7 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
             "README.md",
             "LICENSE.txt",
             "MorphoDepotAccession.json",
+            "source_volume_checksum",
         ]
         if sourceSegmentation:
             segmentationName = "baseline" # initial segmentation
@@ -1938,9 +2116,7 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
         """Gets accession data from all repositories"""
         repos = self.morphoRepos()
 
-        repoDirectory = os.path.normpath(slicer.util.settingsValue("MorphoDepot/repoDirectory", "") or "")
-
-        searchDirectory = f"{repoDirectory}/MorphoDepotSearchCache"
+        searchDirectory = os.path.join(self.localRepositoryDirectory(), "MorphoDepotCaches", "SearchData")
         os.makedirs(searchDirectory, exist_ok=True)
 
         self.repoDataByNameWithOwner = {}

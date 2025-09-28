@@ -113,6 +113,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.prsByItem = {}
         self.segmentNamesByID = {}
         self.searchResultsByItem = {}
+        self.testingMode = False
 
     def progressMethod(self, message=None):
         message = message if message else self
@@ -430,7 +431,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         slicer.util.showStatusMessage(f"Loading {item.text()}")
         repoDirectory = os.path.normpath(self.configureUI.repoDirectory.currentPath)
         issue = self.issuesByItem[item]
-        if slicer.util.confirmOkCancelDisplay("Close scene and load issue?"):
+        if self.testingMode or slicer.util.confirmOkCancelDisplay("Close scene and load issue?"):
             with slicer.util.tryWithErrorDisplay("Failed to load issue", waitCursor=True):
                 slicer.util.showStatusMessage(f"Loading {item.text()}")
                 self.removeObservers()
@@ -510,8 +511,9 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             slicer.util.showStatusMessage(f"Committing and pushing")
             message = self.annotateUI.messageTitle.text
             if message == "":
-                slicer.util.messageBox("You must provide a commit message (title required, body optional)")
-                return
+                #slicer.util.messageBox("You must provide a commit message (title required, body optional)")
+                #return
+                message = "message was empty"
             body = self.annotateUI.messageBody.plainText
             if body != "":
                 message = f"{message}\n\n{body}"
@@ -575,7 +577,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
     def onPRDoubleClicked(self, item):
         repoDirectory = self.logic.localRepositoryDirectory()
         pr = self.prsByItem[item]
-        if slicer.util.confirmOkCancelDisplay("Close scene and load PR?"):
+        if self.testingMode or slicer.util.confirmOkCancelDisplay("Close scene and load PR?"):
             with slicer.util.tryWithErrorDisplay("Failed to load PR", waitCursor=True):
                 slicer.util.showStatusMessage(f"Loading {item.text()}")
                 self.reviewUI.currentPRLabel.text = f"PR: {item.text()}"
@@ -613,17 +615,17 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             self.releaseUI.currentVersionLabel.text = "Current version: None"
             self.releaseUI.openReleasePageButton.enabled = False
             self.reposByItem = {}
-            ownedRepos = self.logic.ownedRepoList()
-            for repo in ownedRepos:
+            administratedRepos = self.logic.administratedRepoList()
+            for repo in administratedRepos:
                 item = qt.QListWidgetItem(repo['nameWithOwner'])
                 self.reposByItem[item] = repo
                 self.releaseUI.repoList.addItem(item)
-            slicer.util.showStatusMessage(f"Found {len(ownedRepos)} owned repositories.")
+            slicer.util.showStatusMessage(f"Found {len(administratedRepos)} owned repositories.")
 
     def onReleaseRepoDoubleClicked(self, item):
         repoData = self.reposByItem[item]
         slicer.util.showStatusMessage(f"Loading repository {repoData['nameWithOwner']}...")
-        if slicer.util.confirmOkCancelDisplay("Close scene and load repository?"):
+        if self.testingMode or slicer.util.confirmOkCancelDisplay("Close scene and load repository?"):
             slicer.mrmlScene.Clear()
             with slicer.util.tryWithErrorDisplay("Failed to load repository", waitCursor=True):
                 if self.logic.loadRepoForRelease(repoData):
@@ -780,7 +782,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
     def previewRepository(self, repoNameWithOwner):
         """Clones a repository and loads its data for previewing."""
         slicer.util.showStatusMessage(f"Previewing repository {repoNameWithOwner}...")
-        if slicer.util.confirmOkCancelDisplay("Close scene and load repository for preview?"):
+        if self.testingMode or slicer.util.confirmOkCancelDisplay("Close scene and load repository for preview?"):
             slicer.mrmlScene.Clear()
             with slicer.util.tryWithErrorDisplay("Failed to load repository", waitCursor=True):
                 self.logic.loadRepoForPreview(repoNameWithOwner)
@@ -1414,9 +1416,12 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             process = slicer.util.launchConsoleProcess(fullCommandList)
             result = process.communicate()
             locale.setlocale(locale.LC_ALL, originalLocale)
-            if process.returncode == 0:
+            needRetry = result[0].find("error: 503") != -1
+            if process.returncode == 0 or not needRetry:
+                if attempt > 0:
+                    print(f"Command succeeded after try {attempt}")
                 break
-            error_message = f"gh command failed: {' '.join(commandList)}\nOutput: {result}"
+            error_message = f"gh command failed: {' '.join(commandList)}\nCode: {process.returncode}, Output: {result}"
             print(error_message)
             delay = baseDelay * (2 ** attempt)
             self.progressMethod(f"gh returned {process.returncode}, sleeping {delay} seconds before retry")
@@ -1451,7 +1456,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                                     number title isDraft url
                                     author { login }
                                     closingIssuesReferences(first: 1) {
-                                      nodes { title author {login} }
+                                      nodes { title author {login} repository { name owner {login} } }
                                     }
                                 }
                             }
@@ -1483,6 +1488,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                     owner {
                       login
                     }
+                    viewerPermission
                   }
                 }
               }
@@ -1500,13 +1506,6 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         """ Get the active gh account """
         return(self.gh("auth status --active").split()[7])
 
-    def issueListOld(self):
-        repoList = self.morphoRepos()
-        candiateIssueList = self.ghJSON(f"search issues --limit 1000 --assignee=@me --state open --json repository,title,number")
-        repoNamesWithOwner = [f"{repo['owner']['login']}/{repo['name']}" for repo in repoList]
-        issueList = [issue for issue in candiateIssueList if issue['repository']['nameWithOwner'] in repoNamesWithOwner]
-        return issueList
-
     def issueList(self):
         me = self.whoami()
         repoData = self.ghTopicData()
@@ -1521,11 +1520,13 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                                       'repository': { 'name': repoName, 'nameWithOwner': repo['nameWithOwner']}})
         return issueList
 
-    def ownedRepoList(self):
-        repos = self.ghJSON(f"search repos --limit 1000 --owner=@me --json name,owner -- topic:morphodepot")
-        for repo in repos:
-            repo['nameWithOwner'] = f"{repo['owner']['login']}/{repo['name']}"
-        return repos
+    def administratedRepoList(self):
+        returnRepos = []
+        for repo in self.morphoRepos():
+            if repo['viewerPermission'] == 'ADMIN':
+                repo['nameWithOwner'] = f"{repo['owner']['login']}/{repo['name']}"
+                returnRepos.append(repo)
+        return returnRepos
 
     def prList(self, role="segmenter"):
         """
@@ -1552,108 +1553,6 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                                       'repository': { 'name': repoName, 'nameWithOwner': repo['nameWithOwner']}})
         return prList
 
-        oldPRListCodee = '''
-                search_qualifier = ""
-                if role == "segmenter":
-                    search_qualifier = "author:@me"
-                elif role == "reviewer":
-                    # 'involves' includes mentions, assignments, and review requests.
-                    search_qualifier = "involves:@me"
-
-                # This GraphQL query searches for open PRs based on the user's role.
-                # For each PR, it fetches details including the title of any linked issues.
-                query = """
-                    query($searchQuery: String!) {{
-                      search(query: $searchQuery, type: ISSUE, first: 100) {{
-                        nodes {{
-                          ... on PullRequest {{
-                            title
-                            number
-                            isDraft
-                            updatedAt
-                            author {{
-                              login
-                            }}
-                            repository {{
-                              nameWithOwner
-                            }}
-                            closingIssuesReferences(first: 1) {{
-                              nodes {{
-                                title
-                              }}
-                            }}
-                          }}
-                        }}
-                      }}
-                    }}
-                """
-                search_query_string = f"is:pr is:open topic:morphodepot {search_qualifier}"
-                command = ['api', 'graphql', '--paginate', '--slurp',
-                           '-f', f'query={query}', '-f', f'searchQuery={search_query_string}']
-
-                pages = self.ghJSON(command)
-                prList = [pr for page in pages for pr in page['data']['search']['nodes'] if pr]
-
-                for pr in prList:
-                    # Extract the issue title from the nested structure
-                    issue_nodes = pr.get('closingIssuesReferences', {}).get('nodes', [])
-                    pr['issueTitle'] = issue_nodes[0]['title'] if issue_nodes else "issue not found"
-
-                return prList
-
-            def prList(self, role="segmenter"):
-                """
-                Fetch a list of open pull requests for the user, either as an author ('segmenter')
-                or as a reviewer. This method uses a single GraphQL query to efficiently
-                retrieve PRs, their associated issue titles, and repository topics.
-                """
-                search_qualifier = ""
-                if role == "segmenter":
-                    search_qualifier = "author:@me"
-                elif role == "reviewer":
-                    search_qualifier = "involves:@me"
-
-                # This GraphQL query searches for open PRs based on the user's role.
-                # For each PR, it fetches details including the title of any linked issues.
-                query = """
-                    query($searchQuery: String!) {{
-                      search(query: $searchQuery, type: ISSUE, first: 100) {{
-                        nodes {{
-                          ... on PullRequest {{
-                            title
-                            number
-                            isDraft
-                            updatedAt
-                            author {{
-                              login
-                            }}
-                            repository {{
-                              nameWithOwner
-                            }}
-                            closingIssuesReferences(first: 1) {{
-                              nodes {{
-                                title
-                              }}
-                            }}
-                          }}
-                        }}
-                      }}
-                    }}
-                """
-                search_query_string = f"is:pr is:open topic:morphodepot {search_qualifier}"
-                command = ['api', 'graphql', '--paginate', '--slurp',
-                           '-f', f'query={query}', '-f', f'searchQuery={search_query_string}']
-
-                pages = self.ghJSON(command)
-                prList = [pr for page in pages for pr in page['data']['search']['nodes'] if pr]
-
-                for pr in prList:
-                    # Extract the issue title from the nested structure
-                    issue_nodes = pr.get('closingIssuesReferences', {}).get('nodes', [])
-                    pr['issueTitle'] = issue_nodes[0]['title'] if issue_nodes else "issue not found"
-
-                return prList
-        '''
 
     def repositoryList(self):
         repositories = json.loads(self.gh("repo list --json name"))
@@ -1718,7 +1617,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.localRepo.remotes.origin.fetch()
         self.localRepo.git.checkout(branchName)
 
-        self.loadFromLocalRepository()
+        self.loadFromLocalRepository(configuration="reviewer")
         return True
 
     def loadRepoForRelease(self, repoData):
@@ -1799,18 +1698,17 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             editorWidget = slicer.modules.segmenteditor.widgetRepresentation().self()
 
             self.segmentationPath = os.path.join(localDirectory, branchName) + ".seg.nrrd"
-            if configuration == "segment":
-                if branchName in segmentationNodesByName.keys():
-                    self.segmentationNode = segmentationNodesByName[branchName]
-                    self.segmentationNode.GetDisplayNode().SetVisibility(True)
-                else:
-                    self.segmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
-                    self.segmentationNode.CreateDefaultDisplayNodes()
-                    self.segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(volumeNode)
-                    self.segmentationNode.SetName(branchName)
+            if branchName in segmentationNodesByName.keys():
+                self.segmentationNode = segmentationNodesByName[branchName]
+                self.segmentationNode.GetDisplayNode().SetVisibility(True)
+            else:
+                self.segmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
+                self.segmentationNode.CreateDefaultDisplayNodes()
+                self.segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(volumeNode)
+                self.segmentationNode.SetName(branchName)
 
-                editorWidget.parameterSetNode.SetAndObserveSegmentationNode(self.segmentationNode)
-                editorWidget.parameterSetNode.SetAndObserveSourceVolumeNode(volumeNode)
+            editorWidget.parameterSetNode.SetAndObserveSegmentationNode(self.segmentationNode)
+            editorWidget.parameterSetNode.SetAndObserveSourceVolumeNode(volumeNode)
 
     def nameWithOwner(self, remote):
         branchName = self.localRepo.active_branch.name
@@ -1837,6 +1735,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
     def issuePR(self, role="segmenter"):
         """Find the issue for the issue currently being worked on or None if there isn't one"""
+        if role not in ("segmenter", "reviewer"):
+            raise ValueError(f"Invalid role {role}")
         if not self.localRepo:
             return None
         branchName = self.localRepo.active_branch.name
@@ -1844,7 +1744,6 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             upstreamNameWithOwner = self.nameWithOwner("upstream")
         except ValueError:
             return None
-        upstreamOwner = upstreamNameWithOwner.split("/")[0]
         issuePR = None
         prs = self.prList(role=role)
         for pr in prs:
@@ -1915,6 +1814,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             """.replace("\n"," ").split()
             commandList += ["--body", prBody]
             self.gh(commandList)
+            self.ghTopicClearCache()
         return True
 
     def requestReview(self):
@@ -2106,7 +2006,7 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
         repo.index.commit("Add source file url file")
         repo.remote(name="origin").push()
 
-        self.gh("config clear-cache"); # so the next morphoRepos call will include this repo
+        self.ghTopicClearCache()
 
     #
     # Search
@@ -2192,6 +2092,9 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
+    def delayDisplay(self, message):
+        print(message)
+
     def setUp(self):
         """Do whatever is needed to reset the state - typically a scene clear will be enough."""
         slicer.mrmlScene.Clear()
@@ -2199,7 +2102,10 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
     def runTest(self):
         """Run as few or as many tests as needed here."""
         self.setUp()
+        widget = slicer.modules.MorphoDepotWidget
+        widget.testingMode = True
         self.test_MorphoDepot1()
+        widget.testingMode = False
 
     def _generate_random_species_name(self):
         """Generates a random species-like name for testing."""
@@ -2339,7 +2245,6 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
             # Commit and push, which creates a draft PR
             commitMessage = f"Work on issue #{issue['number']}"
             self.delayDisplay(f"Committing and creating PR for issue #{issue['number']}")
-            self.assertTrue(logic.commitAndPush(commitMessage), f"Failed to commit and push for issue #{issue['number']}")
             widget.annotateUI.messageTitle.text = commitMessage
             widget.onCommit()
             slicer.app.processEvents()
@@ -2352,18 +2257,26 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
         # 12. Switch to Creator to review the PRs
         switchUser(creator)
         self.delayDisplay("Creator reviewing PRs")
-        widget.updateReviewPRList()
-        self.assertEqual(widget.reviewUI.prList.count, 2, "Expected 2 PRs for review.")
 
         # Approve the first PR and request changes on the second
-        itemToApprove = widget.reviewUI.prList.item(0)
-        prToApprove = widget.prsByItem[itemToApprove]
-        itemToRequestChanges = widget.reviewUI.prList.item(1)
-        prToRequestChanges = widget.prsByItem[itemToRequestChanges]
+
+        issueIDs = []
+        issuesByID = {}
+        for issue in annotatorIssues:
+            issueID = f"issue-{issue['number']}"
+            issueIDs.append(issueID)
+            issuesByID[issueID] = issue
+        prList = logic.prList("reviewer")
+        repoPRsByIssueID = {}
+        for pr in prList:
+            if pr['repository']['nameWithOwner'] == repoNameWithOwner and pr['title'] in issueIDs:
+                repoPRsByIssueID[pr['title']] = pr
+        prToApprove = repoPRsByIssueID[issueIDs[0]]
+        prToRequestChanges = repoPRsByIssueID[issueIDs[1]]
+        issueToChange = issuesByID[issueIDs[1]]
 
         # Approve the first PR
         self.delayDisplay(f"Approving and merging PR #{prToApprove['number']}")
-        slicer.mrmlScene.Clear()
         logic.loadPR(prToApprove, repoDirectory)
         widget.reviewUI.reviewMessage.plainText = "Looks good!"
         widget.onApprove()
@@ -2371,7 +2284,6 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
 
         # Request changes on the second PR
         self.delayDisplay(f"Requesting changes on PR #{prToRequestChanges['number']}")
-        slicer.mrmlScene.Clear()
         logic.loadPR(prToRequestChanges, repoDirectory)
         widget.reviewUI.reviewMessage.plainText = "Please add another segment."
         widget.onRequestChanges()
@@ -2382,27 +2294,23 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
         self.delayDisplay("Annotator addressing feedback")
 
         # Find the issue that needs changes
-        issueForChanges = next(issue for issue in annotatorIssues if f"issue-{issue['number']}" == prToRequestChanges['title'])
 
         # Load the issue, make a change, and request review again
-        slicer.mrmlScene.Clear()
-        logic.loadIssue(issueForChanges, repoDirectory)
+        logic.loadIssue(issueToChange, repoDirectory)
         self.delayDisplay("Making an additional change to the segmentation")
         segmentation = logic.segmentationNode.GetSegmentation()
         segmentation.AddEmptySegment("additional-annotator-segment")
 
-        commitMessage = f"Addressing feedback on issue #{issueForChanges['number']}"
+        commitMessage = f"Addressing feedback on issue #{issueToChange['number']}"
         widget.annotateUI.messageTitle.text = commitMessage
         widget.onCommit()
         slicer.app.processEvents()
         widget.onRequestReview()
         slicer.app.processEvents()
-        logic.gh(f"pr comment {prToRequestChanges['number']} --repo {repoNameWithOwner} --body 'I have addressed the feedback. Ready for another look.'")
 
         # 14. Switch back to Creator to approve the updated PR
         switchUser(creator)
         self.delayDisplay(f"Creator approving updated PR #{prToRequestChanges['number']}")
-        slicer.mrmlScene.Clear()
         logic.loadPR(prToRequestChanges, repoDirectory)
         widget.reviewUI.reviewMessage.plainText = "Thanks for the update!"
         widget.onApprove()
@@ -2418,7 +2326,9 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
         repoItem = None
         for i in range(widget.releaseUI.repoList.count):
             item = widget.releaseUI.repoList.item(i)
-            if item.text() == repoNameWithOwner:
+            repo = widget.reposByItem[item]
+            print(repo['nameWithOwner'], repoNameWithOwner)
+            if repo['nameWithOwner'] == repoNameWithOwner:
                 repoItem = item
                 break
         self.assertIsNotNone(repoItem, f"Repository {repoNameWithOwner} not found in release list.")

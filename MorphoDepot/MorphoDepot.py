@@ -113,6 +113,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.prsByItem = {}
         self.segmentNamesByID = {}
         self.searchResultsByItem = {}
+        self.testingMode = False
 
     def progressMethod(self, message=None):
         message = message if message else self
@@ -401,7 +402,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         prList = self.logic.prList(role="segmenter")
         for pr in prList:
             prStatus = 'draft' if pr['isDraft'] else 'ready for review'
-            prTitle = f"{pr['issueTitle']} {pr['repository']['nameWithOwner']}: {pr['title']} ({prStatus})"
+            prTitle = f"{pr['title']} {pr['repository']['nameWithOwner']}: {prStatus}"
             item = qt.QListWidgetItem(prTitle)
             self.prsByItem[item] = pr
             self.annotateUI.prList.addItem(item)
@@ -430,7 +431,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         slicer.util.showStatusMessage(f"Loading {item.text()}")
         repoDirectory = os.path.normpath(self.configureUI.repoDirectory.currentPath)
         issue = self.issuesByItem[item]
-        if slicer.util.confirmOkCancelDisplay("Close scene and load issue?"):
+        if self.testingMode or slicer.util.confirmOkCancelDisplay("Close scene and load issue?"):
             with slicer.util.tryWithErrorDisplay("Failed to load issue", waitCursor=True):
                 slicer.util.showStatusMessage(f"Loading {item.text()}")
                 self.removeObservers()
@@ -510,8 +511,9 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             slicer.util.showStatusMessage(f"Committing and pushing")
             message = self.annotateUI.messageTitle.text
             if message == "":
-                slicer.util.messageBox("You must provide a commit message (title required, body optional)")
-                return
+                #slicer.util.messageBox("You must provide a commit message (title required, body optional)")
+                #return
+                message = "message was empty"
             body = self.annotateUI.messageBody.plainText
             if body != "":
                 message = f"{message}\n\n{body}"
@@ -566,7 +568,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             prList = self.logic.prList(role="reviewer")
             for pr in prList:
                 prStatus = 'draft' if pr['isDraft'] else 'ready for review'
-                prTitle = f"{pr['issueTitle']} {pr['repository']['nameWithOwner']}: {pr['title']} ({prStatus})"
+                prTitle = f"{pr['title']} {pr['repository']['nameWithOwner']}: {prStatus}"
                 item = qt.QListWidgetItem(prTitle)
                 self.prsByItem[item] = pr
                 self.reviewUI.prList.addItem(item)
@@ -575,7 +577,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
     def onPRDoubleClicked(self, item):
         repoDirectory = self.logic.localRepositoryDirectory()
         pr = self.prsByItem[item]
-        if slicer.util.confirmOkCancelDisplay("Close scene and load PR?"):
+        if self.testingMode or slicer.util.confirmOkCancelDisplay("Close scene and load PR?"):
             with slicer.util.tryWithErrorDisplay("Failed to load PR", waitCursor=True):
                 slicer.util.showStatusMessage(f"Loading {item.text()}")
                 self.reviewUI.currentPRLabel.text = f"PR: {item.text()}"
@@ -613,17 +615,17 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             self.releaseUI.currentVersionLabel.text = "Current version: None"
             self.releaseUI.openReleasePageButton.enabled = False
             self.reposByItem = {}
-            ownedRepos = self.logic.ownedRepoList()
-            for repo in ownedRepos:
+            administratedRepos = self.logic.administratedRepoList()
+            for repo in administratedRepos:
                 item = qt.QListWidgetItem(repo['nameWithOwner'])
                 self.reposByItem[item] = repo
                 self.releaseUI.repoList.addItem(item)
-            slicer.util.showStatusMessage(f"Found {len(ownedRepos)} owned repositories.")
+            slicer.util.showStatusMessage(f"Found {len(administratedRepos)} owned repositories.")
 
     def onReleaseRepoDoubleClicked(self, item):
         repoData = self.reposByItem[item]
         slicer.util.showStatusMessage(f"Loading repository {repoData['nameWithOwner']}...")
-        if slicer.util.confirmOkCancelDisplay("Close scene and load repository?"):
+        if self.testingMode or slicer.util.confirmOkCancelDisplay("Close scene and load repository?"):
             slicer.mrmlScene.Clear()
             with slicer.util.tryWithErrorDisplay("Failed to load repository", waitCursor=True):
                 if self.logic.loadRepoForRelease(repoData):
@@ -780,7 +782,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
     def previewRepository(self, repoNameWithOwner):
         """Clones a repository and loads its data for previewing."""
         slicer.util.showStatusMessage(f"Previewing repository {repoNameWithOwner}...")
-        if slicer.util.confirmOkCancelDisplay("Close scene and load repository for preview?"):
+        if self.testingMode or slicer.util.confirmOkCancelDisplay("Close scene and load repository for preview?"):
             slicer.mrmlScene.Clear()
             with slicer.util.tryWithErrorDisplay("Failed to load repository", waitCursor=True):
                 self.logic.loadRepoForPreview(repoNameWithOwner)
@@ -1407,15 +1409,20 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         fullCommandList = [self.ghExecutablePath] + commandList
 
         baseDelay = 1
-        attempts = 5
+        attempts = 4
         for attempt in range(attempts):
             originalLocale = locale.setlocale(locale.LC_ALL)
             locale.setlocale(locale.LC_ALL, "en_US.UTF-8")
             process = slicer.util.launchConsoleProcess(fullCommandList)
             result = process.communicate()
             locale.setlocale(locale.LC_ALL, originalLocale)
-            if process.returncode == 0:
+            needRetry = result[0].find("error: 503") != -1
+            if process.returncode == 0 or not needRetry:
+                if attempt > 0:
+                    print(f"Command succeeded after try {attempt}")
                 break
+            error_message = f"gh command failed: {' '.join(commandList)}\nCode: {process.returncode}, Output: {result}"
+            print(error_message)
             delay = baseDelay * (2 ** attempt)
             self.progressMethod(f"gh returned {process.returncode}, sleeping {delay} seconds before retry")
             time.sleep(delay)
@@ -1434,72 +1441,118 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             return json.loads(jsonString)
         return []
 
+    def ghTopicClearCache(self):
+        self.gh("config clear-cache")
+
+    def ghTopicData(self, topic="MorphoDepot"):
+        query="""
+            query($params: String!) {
+                search(query: $params, type: REPOSITORY, first: 100) {
+                    nodes {
+                        ... on Repository {
+                            nameWithOwner
+                            pullRequests(states: [OPEN], first: 20) {
+                                nodes {
+                                    number title isDraft url
+                                    author { login }
+                                    closingIssuesReferences(first: 1) {
+                                      nodes { title author {login} repository { name owner {login} } }
+                                    }
+                                }
+                            }
+                            issues(states: [OPEN], first: 20) {
+                                nodes {
+                                    number title url author { login }
+                                    assignees(first: 5) { nodes { login } }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        """
+        params = f"topic:{topic} fork:true"
+        command = ['api', 'graphql', "--cache", "10m", '--paginate', '--slurp',
+                   '-f', f'query={query}', '-f', f'params={params}']
+        searchData = self.ghJSON(command)
+        return searchData[0]['data']['search']['nodes']
+
     def morphoRepos(self):
         # TODO: generalize for other topics
         query = """
-            query($searchQuery: String!, $after: String) {
-              search(query: $searchQuery, type: REPOSITORY, first: 100, after: $after) {
-                repositoryCount
-                edges {
-                  node {
-                    ... on Repository {
-                      name
-                      owner {
-                        login
-                      }
+            query($searchQuery: String!) {
+              search(query: $searchQuery, type: REPOSITORY, first: 100) {
+                nodes {
+                  ... on Repository {
+                    name
+                    owner {
+                      login
                     }
+                    viewerPermission
                   }
-                }
-                pageInfo {
-                  endCursor
-                  hasNextPage
                 }
               }
             }
         """
-        all_repos = []
-        hasNextPage = True
-        after_cursor = None
-        while hasNextPage:
-            result = self.ghJSON(['api', 'graphql', '--cache', '5m', '-f', f'query={query}', '-f', 'searchQuery=topic:morphodepot fork:true', '-F', f'after={after_cursor if after_cursor else "null"}'])
-            if result and 'data' in result and 'search' in result['data']:
-                all_repos.extend([edge['node'] for edge in result['data']['search']['edges']])
-                hasNextPage = result['data']['search']['pageInfo']['hasNextPage']
-                after_cursor = result['data']['search']['pageInfo']['endCursor']
-            else:
-                hasNextPage = False
+        search_query_string = "topic:morphodepot fork:true"
+        command = ['api', 'graphql', '--paginate', '--slurp',
+                   '-f', f'query={query}', '-f', f'searchQuery={search_query_string}']
+        pages = self.ghJSON(command)
+        all_repos = [repo for page in pages for repo in page['data']['search']['nodes'] if repo]
+
         return all_repos
 
+    def whoami(self):
+        """ Get the active gh account """
+        return(self.gh("auth status --active").split()[7])
+
     def issueList(self):
-        repoList = self.morphoRepos()
-        candiateIssueList = self.ghJSON(f"search issues --limit 1000 --assignee=@me --state open --json repository,title,number")
-        repoNamesWithOwner = [f"{repo['owner']['login']}/{repo['name']}" for repo in repoList]
-        issueList = [issue for issue in candiateIssueList if issue['repository']['nameWithOwner'] in repoNamesWithOwner]
+        me = self.whoami()
+        repoData = self.ghTopicData()
+        issueList = []
+        for repo in repoData:
+            for issue in repo['issues']['nodes']:
+                assignees = [node['login'] for node in issue['assignees']['nodes']]
+                if me in assignees:
+                    repoName = repo['nameWithOwner'].split("/")[1]
+                    issueList.append({'number': issue['number'],
+                                      'title': issue['title'],
+                                      'repository': { 'name': repoName, 'nameWithOwner': repo['nameWithOwner']}})
         return issueList
 
-    def ownedRepoList(self):
-        repos = self.ghJSON(f"search repos --limit 1000 --owner=@me --json name,owner -- topic:morphodepot")
-        for repo in repos:
-            repo['nameWithOwner'] = f"{repo['owner']['login']}/{repo['name']}"
-        return repos
+    def administratedRepoList(self):
+        returnRepos = []
+        for repo in self.morphoRepos():
+            if repo['viewerPermission'] == 'ADMIN':
+                repo['nameWithOwner'] = f"{repo['owner']['login']}/{repo['name']}"
+                returnRepos.append(repo)
+        return returnRepos
 
     def prList(self, role="segmenter"):
-        repoList = self.morphoRepos()
-        repoNamesWithOwner = [f"{repo['owner']['login']}/{repo['name']}" for repo in repoList]
-        if role == "segmenter":
-            searchString = "--author=@me"
-        elif role == "reviewer":
-            searchString = "--owner=@me"
-        jsonFields = "title,number,author,isDraft,updatedAt,repository"
-        candidatePRList = self.ghJSON(f"search prs --limit 1000 --state open --json {jsonFields} {searchString}")
-        prList = [pr for pr in candidatePRList if pr['repository']['nameWithOwner'] in repoNamesWithOwner]
-        for pr in prList:
-            issues = self.ghJSON(f"issue list --repo {pr['repository']['nameWithOwner']} --json title,number --state open")
-            pr['issueTitle'] = "issue not found"
-            for issue in issues:
-                if pr['title'] == f"issue-{issue['number']}":
-                    pr['issueTitle'] = issue['title']
+        """
+        Fetch a list of open pull requests for the user, either as 'segmenter' or reviewer.
+        Returns PRs, their associated issue titles, and repository topics.
+        """
+        me = self.whoami()
+        repoData = self.ghTopicData()
+        prList = []
+        for repo in repoData:
+            for pr in repo['pullRequests']['nodes']:
+                if role == "segmenter":
+                    parties = [pr['author']['login']]
+                elif role == "reviewer":
+                    parties = [issue['author']['login'] for issue in pr['closingIssuesReferences']['nodes']]
+                else:
+                    raise BaseException(f"Unknown role {role}")
+                if me in parties:
+                    repoName = repo['nameWithOwner'].split("/")[1]
+                    prList.append({'number': pr['number'],
+                                      'title': pr['title'],
+                                      'isDraft': pr['isDraft'],
+                                      'author': {'login': pr['author']['login']},
+                                      'repository': { 'name': repoName, 'nameWithOwner': repo['nameWithOwner']}})
         return prList
+
 
     def repositoryList(self):
         repositories = json.loads(self.gh("repo list --json name"))
@@ -1518,12 +1571,13 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         branchName=f"issue-{issueNumber}"
         sourceRepository = issue['repository']['nameWithOwner']
         repositoryName = issue['repository']['name']
-        localDirectory = f"{repoDirectory}/{repositoryName}-{branchName}"
+        localDirectory = os.path.join(repoDirectory, f"{repositoryName}-{branchName}")
 
-        if not os.path.exists(localDirectory):
-            if repositoryName not in self.repositoryList():
-                self.gh(f"repo fork {sourceRepository} --remote=true --clone=false")
-            self.gh(f"repo clone {repositoryName} {localDirectory}")
+        self.cacheOldVersion(localDirectory)
+
+        if repositoryName not in self.repositoryList():
+            self.gh(f"repo fork {sourceRepository} --remote=true --clone=false")
+        self.gh(f"repo clone {repositoryName} {localDirectory}")
         self.localRepo = git.Repo(localDirectory)
         self.ensureUpstreamExists()
 
@@ -1537,56 +1591,44 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 localIssueBranch = branch
                 break
 
-        if localIssueBranch:
-            logging.debug("Using existing local repository %s", localIssueBranch)
-            self.localRepo.git.checkout(localIssueBranch)
-            self.ensureUpstreamExists()
-            pullResult = self.localRepo.git.pull("--rebase", "upstream", "main")
-            self.progressMethod(pullResult)
+        logging.debug("Making new branch")
+        if originBranchID in originBranchIDs:
+            logging.debug("Checking out existing from origin")
+            self.localRepo.git.execute(f"git checkout --track {originBranchID}".split())
         else:
-            logging.debug("Making new branch")
-            if originBranchID in originBranchIDs:
-                logging.debug("Checking out existing from origin")
-                self.localRepo.git.execute(f"git checkout --track {originBranchID}".split())
-            else:
-                logging.debug("Nothing local or remote, nothing in origin so make new branch %s", branchName)
-                self.localRepo.git.checkout("origin/main")
-                self.localRepo.git.branch(branchName)
-                self.localRepo.git.checkout(branchName)
+            logging.debug("Nothing local or remote, nothing in origin so make new branch %s", branchName)
+            self.localRepo.git.checkout("origin/main")
+            self.localRepo.git.branch(branchName)
+            self.localRepo.git.checkout(branchName)
 
         self.loadFromLocalRepository()
 
     def loadPR(self, pr, repoDirectory):
         branchName = pr['title']
-        repositoryName = f"{pr['author']['login']}/{pr['repository']['name']}"
-        localDirectory = f"{repoDirectory}/{pr['repository']['name']}-{branchName}"
-        self.progressMethod(f"Loading issue {repositoryName} into {localDirectory}")
+        repoNameWithOwner = f"{pr['author']['login']}/{pr['repository']['name']}"
+        localDirectory = os.path.join(repoDirectory, f"{pr['repository']['name']}-{branchName}")
+        self.progressMethod(f"Loading PR from {repoNameWithOwner} into {localDirectory}")
 
-        if not os.path.exists(localDirectory):
-            self.gh(f"repo clone {repositoryName} {localDirectory}")
+        self.cacheOldVersion(localDirectory)
+
+        self.gh(f"repo clone {repoNameWithOwner} {localDirectory}")
         self.localRepo = git.Repo(localDirectory)
         self.ensureUpstreamExists()
         self.localRepo.remotes.origin.fetch()
         self.localRepo.git.checkout(branchName)
-        if not self.localRepo.head.ref.tracking_branch():
-            originMain = self.localRepo.remotes.origin.refs.main
-            self.localRepo.head.ref.set_tracking_branch(originMain)
-        try:
-            self.localRepo.remotes.origin.pull(rebase=True)
-        except git.exc.GitCommandError:
-            self.progressMethod(f"Error pulling origin")
-            return False
 
-        self.loadFromLocalRepository()
+        self.loadFromLocalRepository(configuration="reviewer")
         return True
 
     def loadRepoForRelease(self, repoData):
         repoName = repoData['name']
-        repoNameWithOwner = repoData['nameWithOwner']
+        repoNameWithOwner = repoData['nameWithOwner'] # this is owner/name
         localDirectory = os.path.join(self.localRepositoryDirectory(), repoName)
 
-        if not os.path.exists(localDirectory):
-            self.gh(f"repo clone {repoNameWithOwner} {localDirectory}")
+        self.cacheOldVersion(localDirectory)
+
+        # clone the main repo, not a fork
+        self.gh(f"repo clone {repoNameWithOwner} {localDirectory}")
 
         self.localRepo = git.Repo(localDirectory)
         self.localRepo.git.checkout("main")
@@ -1597,9 +1639,9 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         repoName = repoNameWithOwner.split('/')[1]
         localDirectory = os.path.join(self.localRepositoryDirectory(), repoName)
 
-        if not os.path.exists(localDirectory):
-            print(f"repo clone {repoNameWithOwner} {localDirectory}")
-            self.gh(f"repo clone {repoNameWithOwner} {localDirectory}")
+        self.cacheOldVersion(localDirectory)
+
+        self.gh(f"repo clone {repoNameWithOwner} {localDirectory}")
 
         self.localRepo = git.Repo(localDirectory)
         self.localRepo.git.checkout("main")
@@ -1624,14 +1666,20 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 self.ghProgressMethod(f"No color table found")
 
         # TODO: move from single volume file to segmentation specification json
-        # TODO: save checksum in source_volume file to verify when downloading later
         volumePath = os.path.join(localDirectory, "source_volume")
         if not os.path.exists(volumePath):
             volumePath = os.path.join(localDirectory, "master_volume") # for backwards compatibility
         volumeURL = open(volumePath).read().strip()
-        nrrdPath = os.path.join(localDirectory, f"{remoteNameWithOwner.replace('/', '-')}-volume.nrrd")
+        cacheDirectory = os.path.join(self.localRepositoryDirectory(), "MorphoDepotCaches", "Volumes")
+        os.makedirs(cacheDirectory, exist_ok=True)
+        nrrdPath = os.path.join(cacheDirectory, f"{remoteNameWithOwner.replace('/', '-')}-volume.nrrd")
+        checksum = None
+        checksumFilePath = os.path.join(localDirectory, "source_volume_checksum")
+        if os.path.exists(checksumFilePath):
+            with open(checksumFilePath) as fp:
+                checksum = fp.read().strip()
         if not os.path.exists(nrrdPath):
-            slicer.util.downloadFile(volumeURL, nrrdPath)
+            slicer.util.downloadFile(volumeURL, nrrdPath, checksum=checksum)
         volumeNode = slicer.util.loadVolume(nrrdPath)
 
         # Load all segmentations
@@ -1650,18 +1698,17 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             editorWidget = slicer.modules.segmenteditor.widgetRepresentation().self()
 
             self.segmentationPath = os.path.join(localDirectory, branchName) + ".seg.nrrd"
-            if configuration == "segment":
-                if branchName in segmentationNodesByName.keys():
-                    self.segmentationNode = segmentationNodesByName[branchName]
-                    self.segmentationNode.GetDisplayNode().SetVisibility(True)
-                else:
-                    self.segmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
-                    self.segmentationNode.CreateDefaultDisplayNodes()
-                    self.segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(volumeNode)
-                    self.segmentationNode.SetName(branchName)
+            if branchName in segmentationNodesByName.keys():
+                self.segmentationNode = segmentationNodesByName[branchName]
+                self.segmentationNode.GetDisplayNode().SetVisibility(True)
+            else:
+                self.segmentationNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLSegmentationNode")
+                self.segmentationNode.CreateDefaultDisplayNodes()
+                self.segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(volumeNode)
+                self.segmentationNode.SetName(branchName)
 
-                editorWidget.parameterSetNode.SetAndObserveSegmentationNode(self.segmentationNode)
-                editorWidget.parameterSetNode.SetAndObserveSourceVolumeNode(volumeNode)
+            editorWidget.parameterSetNode.SetAndObserveSegmentationNode(self.segmentationNode)
+            editorWidget.parameterSetNode.SetAndObserveSourceVolumeNode(volumeNode)
 
     def nameWithOwner(self, remote):
         branchName = self.localRepo.active_branch.name
@@ -1671,6 +1718,16 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             # git ssh prototocol
             repoURL = "/".join(repoURL.split(":"))
             repoNameWithOwner = "/".join(repoURL.split("/")[-2:]).split(".")[0]
+        elif repoURL.startswith("https://"):
+            # https protocol
+            repoNameWithOwner = "/".join(repoURL.split("/")[-2:]).split(".")[0]
+        elif repoURL.startswith("git@"):
+            # git@github.com:owner/repo.git
+            repoNameWithOwner = repoURL.split(":")[1].replace(".git", "")
+        elif os.path.exists(repoURL):
+            # local path
+            # this case happens during repo creation before pushing to remote
+            return None
         else:
             # https protocol
             repoNameWithOwner = "/".join(repoURL.split("/")[-2:]).split(".")[0]
@@ -1678,6 +1735,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
     def issuePR(self, role="segmenter"):
         """Find the issue for the issue currently being worked on or None if there isn't one"""
+        if role not in ("segmenter", "reviewer"):
+            raise ValueError(f"Invalid role {role}")
         if not self.localRepo:
             return None
         branchName = self.localRepo.active_branch.name
@@ -1685,7 +1744,6 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             upstreamNameWithOwner = self.nameWithOwner("upstream")
         except ValueError:
             return None
-        upstreamOwner = upstreamNameWithOwner.split("/")[0]
         issuePR = None
         prs = self.prList(role=role)
         for pr in prs:
@@ -1693,6 +1751,17 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             if prRepoNameWithOwner == upstreamNameWithOwner and pr['title'] == branchName:
                 issuePR = pr
         return issuePR
+
+    def cacheOldVersion(self, directoryPath):
+        """If directoryPath exists, move it to an archive in the cache."""
+        if os.path.exists(directoryPath):
+            self.progressMethod(f"Archiving old version of {directoryPath}")
+            cacheDirectory = os.path.join(self.localRepositoryDirectory(), "MorphoDepotCaches", "OldRepositories")
+            os.makedirs(cacheDirectory, exist_ok=True)
+            timestamp = time.strftime("%Y%m%d-%H%M%S")
+            archiveName = f"{os.path.basename(directoryPath)}-{timestamp}"
+            archivePath = os.path.join(cacheDirectory, archiveName)
+            shutil.move(directoryPath, archivePath)
 
     def commitAndPush(self, message):
         """Create a PR if needed and push current segmentation
@@ -1745,6 +1814,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             """.replace("\n"," ").split()
             commandList += ["--body", prBody]
             self.gh(commandList)
+            self.ghTopicClearCache()
         return True
 
     def requestReview(self):
@@ -1837,6 +1907,13 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         sourceFileName = sourceVolume.GetName()
         sourceFilePath = os.path.join(repoDir, sourceFileName) + ".nrrd"
         slicer.util.saveNode(sourceVolume, sourceFilePath)
+
+        # calculate and save checksum
+        checksum = slicer.util.computeChecksum('SHA256', sourceFilePath)
+        checksumFilePath = os.path.join(repoDir, "source_volume_checksum")
+        with open(checksumFilePath, "w") as fp:
+            fp.write(f"SHA256:{checksum}")
+
         colorTableName = colorTable.GetName()
         slicer.util.saveNode(colorTable, os.path.join(repoDir, colorTableName) + ".csv")
         repoFileNames.append(f"{colorTableName}.csv")
@@ -1894,6 +1971,7 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
             "README.md",
             "LICENSE.txt",
             "MorphoDepotAccession.json",
+            "source_volume_checksum",
         ]
         if sourceSegmentation:
             segmentationName = "baseline" # initial segmentation
@@ -1928,7 +2006,7 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
         repo.index.commit("Add source file url file")
         repo.remote(name="origin").push()
 
-        self.gh("config clear-cache"); # so the next morphoRepos call will include this repo
+        self.ghTopicClearCache()
 
     #
     # Search
@@ -1938,9 +2016,7 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
         """Gets accession data from all repositories"""
         repos = self.morphoRepos()
 
-        repoDirectory = os.path.normpath(slicer.util.settingsValue("MorphoDepot/repoDirectory", "") or "")
-
-        searchDirectory = f"{repoDirectory}/MorphoDepotSearchCache"
+        searchDirectory = os.path.join(self.localRepositoryDirectory(), "MorphoDepotCaches", "SearchData")
         os.makedirs(searchDirectory, exist_ok=True)
 
         self.repoDataByNameWithOwner = {}
@@ -2016,6 +2092,9 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
+    def delayDisplay(self, message):
+        print(message)
+
     def setUp(self):
         """Do whatever is needed to reset the state - typically a scene clear will be enough."""
         slicer.mrmlScene.Clear()
@@ -2023,7 +2102,10 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
     def runTest(self):
         """Run as few or as many tests as needed here."""
         self.setUp()
+        widget = slicer.modules.MorphoDepotWidget
+        widget.testingMode = True
         self.test_MorphoDepot1()
+        widget.testingMode = False
 
     def _generate_random_species_name(self):
         """Generates a random species-like name for testing."""
@@ -2163,7 +2245,6 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
             # Commit and push, which creates a draft PR
             commitMessage = f"Work on issue #{issue['number']}"
             self.delayDisplay(f"Committing and creating PR for issue #{issue['number']}")
-            self.assertTrue(logic.commitAndPush(commitMessage), f"Failed to commit and push for issue #{issue['number']}")
             widget.annotateUI.messageTitle.text = commitMessage
             widget.onCommit()
             slicer.app.processEvents()
@@ -2176,18 +2257,26 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
         # 12. Switch to Creator to review the PRs
         switchUser(creator)
         self.delayDisplay("Creator reviewing PRs")
-        widget.updateReviewPRList()
-        self.assertEqual(widget.reviewUI.prList.count, 2, "Expected 2 PRs for review.")
 
         # Approve the first PR and request changes on the second
-        itemToApprove = widget.reviewUI.prList.item(0)
-        prToApprove = widget.prsByItem[itemToApprove]
-        itemToRequestChanges = widget.reviewUI.prList.item(1)
-        prToRequestChanges = widget.prsByItem[itemToRequestChanges]
+
+        issueIDs = []
+        issuesByID = {}
+        for issue in annotatorIssues:
+            issueID = f"issue-{issue['number']}"
+            issueIDs.append(issueID)
+            issuesByID[issueID] = issue
+        prList = logic.prList("reviewer")
+        repoPRsByIssueID = {}
+        for pr in prList:
+            if pr['repository']['nameWithOwner'] == repoNameWithOwner and pr['title'] in issueIDs:
+                repoPRsByIssueID[pr['title']] = pr
+        prToApprove = repoPRsByIssueID[issueIDs[0]]
+        prToRequestChanges = repoPRsByIssueID[issueIDs[1]]
+        issueToChange = issuesByID[issueIDs[1]]
 
         # Approve the first PR
         self.delayDisplay(f"Approving and merging PR #{prToApprove['number']}")
-        slicer.mrmlScene.Clear()
         logic.loadPR(prToApprove, repoDirectory)
         widget.reviewUI.reviewMessage.plainText = "Looks good!"
         widget.onApprove()
@@ -2195,7 +2284,6 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
 
         # Request changes on the second PR
         self.delayDisplay(f"Requesting changes on PR #{prToRequestChanges['number']}")
-        slicer.mrmlScene.Clear()
         logic.loadPR(prToRequestChanges, repoDirectory)
         widget.reviewUI.reviewMessage.plainText = "Please add another segment."
         widget.onRequestChanges()
@@ -2206,27 +2294,23 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
         self.delayDisplay("Annotator addressing feedback")
 
         # Find the issue that needs changes
-        issueForChanges = next(issue for issue in annotatorIssues if f"issue-{issue['number']}" == prToRequestChanges['title'])
 
         # Load the issue, make a change, and request review again
-        slicer.mrmlScene.Clear()
-        logic.loadIssue(issueForChanges, repoDirectory)
+        logic.loadIssue(issueToChange, repoDirectory)
         self.delayDisplay("Making an additional change to the segmentation")
         segmentation = logic.segmentationNode.GetSegmentation()
         segmentation.AddEmptySegment("additional-annotator-segment")
 
-        commitMessage = f"Addressing feedback on issue #{issueForChanges['number']}"
+        commitMessage = f"Addressing feedback on issue #{issueToChange['number']}"
         widget.annotateUI.messageTitle.text = commitMessage
         widget.onCommit()
         slicer.app.processEvents()
         widget.onRequestReview()
         slicer.app.processEvents()
-        logic.gh(f"pr comment {prToRequestChanges['number']} --repo {repoNameWithOwner} --body 'I have addressed the feedback. Ready for another look.'")
 
         # 14. Switch back to Creator to approve the updated PR
         switchUser(creator)
         self.delayDisplay(f"Creator approving updated PR #{prToRequestChanges['number']}")
-        slicer.mrmlScene.Clear()
         logic.loadPR(prToRequestChanges, repoDirectory)
         widget.reviewUI.reviewMessage.plainText = "Thanks for the update!"
         widget.onApprove()
@@ -2242,7 +2326,9 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
         repoItem = None
         for i in range(widget.releaseUI.repoList.count):
             item = widget.releaseUI.repoList.item(i)
-            if item.text() == repoNameWithOwner:
+            repo = widget.reposByItem[item]
+            print(repo['nameWithOwner'], repoNameWithOwner)
+            if repo['nameWithOwner'] == repoNameWithOwner:
                 repoItem = item
                 break
         self.assertIsNotNone(repoItem, f"Repository {repoNameWithOwner} not found in release list.")

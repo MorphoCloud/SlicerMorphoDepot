@@ -1446,12 +1446,12 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
     def ghTopicData(self, topic="MorphoDepot"):
         query="""
-            query($params: String!) {
-                search(query: $params, type: REPOSITORY, first: 100) {
+            query($params: String!, $endCursor: String) {
+                search(query: $params, type: REPOSITORY, first: 100, after: $endCursor) {
                     nodes {
                         ... on Repository {
                             nameWithOwner
-                            pullRequests(states: [OPEN], first: 20) {
+                            pullRequests(states: [OPEN], first: 100) {
                                 nodes {
                                     number title isDraft url
                                     author { login }
@@ -1460,7 +1460,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                                     }
                                 }
                             }
-                            issues(states: [OPEN], first: 20) {
+                            issues(states: [OPEN], first: 100) {
+                                totalCount
                                 nodes {
                                     number title url author { login }
                                     assignees(first: 5) { nodes { login } }
@@ -1468,6 +1469,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                             }
                         }
                     }
+                    pageInfo { endCursor hasNextPage }
                 }
             }
         """
@@ -1475,13 +1477,16 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         command = ['api', 'graphql', "--cache", "10m", '--paginate', '--slurp',
                    '-f', f'query={query}', '-f', f'params={params}']
         searchData = self.ghJSON(command)
+        fp = open("/tmp/q.json", "w")
+        fp.write(json.dumps(searchData, indent=2))
+        fp.close()
         return searchData[0]['data']['search']['nodes']
 
     def morphoRepos(self):
         # TODO: generalize for other topics
         query = """
-            query($searchQuery: String!) {
-              search(query: $searchQuery, type: REPOSITORY, first: 100) {
+            query($searchQuery: String!, $endCursor: String) {
+              search(query: $searchQuery, type: REPOSITORY, first: 100, after: $endCursor) {
                 nodes {
                   ... on Repository {
                     name
@@ -1491,6 +1496,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                     viewerPermission
                   }
                 }
+                pageInfo { endCursor hasNextPage }
               }
             }
         """

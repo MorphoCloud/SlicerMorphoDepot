@@ -1477,9 +1477,6 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         command = ['api', 'graphql', "--cache", "10m", '--paginate', '--slurp',
                    '-f', f'query={query}', '-f', f'params={params}']
         searchData = self.ghJSON(command)
-        fp = open("/tmp/q.json", "w")
-        fp.write(json.dumps(searchData, indent=2))
-        fp.close()
         return searchData[0]['data']['search']['nodes']
 
     def morphoRepos(self):

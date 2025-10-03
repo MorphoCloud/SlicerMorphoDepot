@@ -1277,6 +1277,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
+    accessionFileFormatVersion = 1
+
     def __init__(self, progressMethod = None) -> None:
         """Called when the logic class is instantiated. Can be used for initializing member variables."""
         ScriptedLoadableModuleLogic.__init__(self)
@@ -1922,6 +1924,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         repoFileNames.append(f"{colorTableName}.csv")
 
         # write accessionData file
+        accessionData['fileFormatVersion'] = MorphoDepotLogic.accessionFileFormatVersion
         fp = open(os.path.join(repoDir, "MorphoDepotAccession.json"), "w")
         fp.write(json.dumps(accessionData, indent=4))
         fp.close()

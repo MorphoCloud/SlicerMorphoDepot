@@ -794,7 +794,7 @@ class MorphoDepotAccessionForm():
     sectionTitles = {
         1: "Acquisition type",
         2: "Accessioned specimen",
-        3: "Commercially acquired or unaccessioned specimen",
+        3: "Non-unaccessioned specimen",
         4: "Image data description",
         5: "Partial specimen",
         6: "Licensing",
@@ -808,7 +808,7 @@ class MorphoDepotAccessionForm():
         # section 1
         "specimenSource" : (
             "Is your data from a commercially acquired organism or from an accessioned specimen (i.e., from a natural history collection)?",
-           ["Commercially acquired", "Accessioned specimen"],
+           ["Non-accessioned", "Accessioned specimen"],
            ""
         ),
 
@@ -1019,7 +1019,7 @@ class MorphoDepotAccessionForm():
     def validateForm(self, arguments=None):
 
         # first, update the visibility of dependent sections
-        if self.questions["specimenSource"].answer() == "Commercially acquired":
+        if self.questions["specimenSource"].answer() == "Non-accessioned":
             self.sectionWidgets[2].hide()
             self.sectionWidgets[3].show()
         else:
@@ -1043,7 +1043,7 @@ class MorphoDepotAccessionForm():
         section3Required = False
         if self.questions["specimenSource"].answer() == "":
             valid = False
-        if self.questions["specimenSource"].answer() == "Commercially acquired":
+        if self.questions["specimenSource"].answer() == "Non-accessioned":
             section3Required = True
         elif self.questions["specimenSource"].answer() == "Accessioned specimen":
             if self.questions["iDigBioAccessioned"].answer() == "No":
@@ -1833,6 +1833,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             pr ready {pr['number']}
                 --repo {upstreamNameWithOwner}
             """)
+        self.ghTopicClearCache()
 
     def requestChanges(self, message=""):
         pr = self.issuePR(role="reviewer")
@@ -2165,7 +2166,7 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
         # Fill out the accession form
         form = widget.createUI.accessionForm
         repoName, speciesName = self._generate_random_species_name()
-        form.questions["specimenSource"].optionButtons["Commercially acquired"].click()
+        form.questions["specimenSource"].optionButtons["Non-accessioned"].click()
         form.questions["species"].answerText.text = speciesName
         form.questions["biologicalSex"].optionButtons["Unknown"].click()
         form.questions["developmentalStage"].optionButtons["Adult"].click()

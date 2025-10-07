@@ -844,7 +844,7 @@ class MorphoDepotAccessionForm():
     sectionTitles = {
         1: "Acquisition type",
         2: "Accessioned specimen",
-        3: "Non-unaccessioned specimen",
+        3: "Species information",
         4: "Image data description",
         5: "Partial specimen",
         6: "Licensing",
@@ -1071,17 +1071,18 @@ class MorphoDepotAccessionForm():
         # first, update the visibility of dependent sections
         if self.questions["specimenSource"].answer() == "Non-accessioned":
             self.sectionWidgets[2].hide()
-            self.sectionWidgets[3].show()
         else:
             self.sectionWidgets[2].show()
             if self.questions["iDigBioAccessioned"].answer() == "Yes":
                 self.questions["iDigBioURL"].questionBox.show()
                 self.gotoiDigBioButton.show()
-                self.sectionWidgets[3].hide()
             else:
                 self.questions["iDigBioURL"].questionBox.hide()
                 self.gotoiDigBioButton.hide()
-                self.sectionWidgets[3].show()
+
+        # Section 3 is always visible
+        self.sectionWidgets[3].show()
+
         if self.questions["imageContents"].answer() == "Partial specimen":
             self.sectionWidgets[5].show()
         else:
@@ -1090,25 +1091,19 @@ class MorphoDepotAccessionForm():
         # then check if required elements have been filled out
         valid = True
 
-        section3Required = False
         if self.questions["specimenSource"].answer() == "":
             valid = False
-        if self.questions["specimenSource"].answer() == "Non-accessioned":
-            section3Required = True
-        elif self.questions["specimenSource"].answer() == "Accessioned specimen":
-            if self.questions["iDigBioAccessioned"].answer() == "No":
-                section3Required = True
-            elif self.questions["iDigBioAccessioned"].answer() == "Yes":
-                section3Required = False
+        if self.questions["specimenSource"].answer() == "Accessioned specimen":
+            if self.questions["iDigBioAccessioned"].answer() == "Yes":
                 if not self.questions["iDigBioURL"].answer().startswith("https://portal.idigbio.org/portal/records"):
                     valid = False
-        else:
-            valid = False
-        if section3Required:
-            valid = valid and self.questions["species"].answer() != ""
-            valid = valid and (len(self.questions["species"].answer().split()) == 2)
-            valid = valid and self.questions["biologicalSex"].answer() != ""
-            valid = valid and self.questions["developmentalStage"].answer() != ""
+
+        # Section 3 is always required
+        valid = valid and self.questions["species"].answer() != ""
+        valid = valid and (len(self.questions["species"].answer().split()) == 2)
+        valid = valid and self.questions["biologicalSex"].answer() != ""
+        valid = valid and self.questions["developmentalStage"].answer() != ""
+
         valid = valid and self.questions["modality"].answer() != ""
         valid = valid and self.questions["contrastEnhancement"].answer() != ""
         valid = valid and self.questions["imageContents"].answer() != ""

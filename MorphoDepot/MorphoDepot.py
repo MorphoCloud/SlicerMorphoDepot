@@ -91,10 +91,18 @@ class EnableModuleMixin:
                 return False
         moduleEnabled = True
         if not self.logic.checkGitDependencies():
-            msg = "The git and gh must be installed and configured."
-            msg += "\nBe sure that you have logged into Github with 'gh auth login' and then restart Slicer."
-            msg += "\nSee documentation for platform-specific instructions"
-            slicer.util.messageBox(msg)
+            msgBox = qt.QMessageBox()
+            msgBox.setWindowTitle("MorphoDepot Dependencies")
+            msgBox.setText("The git and gh command line tools must be installed and configured.")
+            informativeText = "Be sure that you have logged into Github with 'gh auth login' and then restart Slicer.\n"
+            informativeText += "Click 'Open Documentation' for platform-specific instructions."
+            msgBox.setInformativeText(informativeText)
+            msgBox.setIcon(qt.QMessageBox.Warning)
+            openDocsButton = msgBox.addButton("Open Documentation", qt.QMessageBox.ActionRole)
+            msgBox.addButton(qt.QMessageBox.Ok)
+            msgBox.exec_()
+            if msgBox.clickedButton() == openDocsButton:
+                qt.QDesktopServices.openUrl(qt.QUrl("https://github.com/MorphoCloud/SlicerMorphoDepot?tab=readme-ov-file#prerequisites-for-morphodepot"))
             return False
         return moduleEnabled
 

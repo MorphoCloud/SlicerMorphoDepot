@@ -932,7 +932,12 @@ class MorphoDepotAccessionForm():
             "What should the repository in your github account called? This needs to be unique value for your account.",
             "",
             "Name should be fairly short and contain only letters, numbers, and the dash, underscore, or dot characters."
-        )
+        ),
+        "repoType" : (
+            "What is the intended lifespan of this repository?",
+            ["Archival (intended for long-term maintenance)", "Short-term (e.g. repositories for classroom exercises, that are not meant to be maintained for long-term)"],
+            ""
+        ),
     }
 
     def __init__(self, workflowMode=False, validationCallback=None):
@@ -1056,6 +1061,9 @@ class MorphoDepotAccessionForm():
         self.questions["githubRepoName"] = FormTextQuestion(q, self.validateForm)
         self.questions["githubRepoName"].questionBox.toolTip = t
         layout.addWidget(self.questions["githubRepoName"].questionBox)
+        q,a,t = form["repoType"]
+        self.questions["repoType"] = FormRadioQuestion(q, a, self.validateForm)
+        layout.addWidget(self.questions["repoType"].questionBox)
 
         if self.workflowMode:
             self.showSection(1)
@@ -1112,6 +1120,7 @@ class MorphoDepotAccessionForm():
         valid = valid and self.questions["redistributionAcknowledgement"].answer() != ""
         valid = valid and self.questions["license"].answer() != ""
         valid = valid and self.questions["githubRepoName"].answer() != ""
+        valid = valid and self.questions["repoType"].answer() != ""
         repoNameRegex = r"^(?:([a-zA-Z\d]+(?:-[a-zA-Z\d]+)*)/)?([\w.-]+)$"
         valid = valid and (re.match(repoNameRegex, self.questions["githubRepoName"].answer()) != None)
         self.validationCallback(valid)
@@ -1258,7 +1267,7 @@ class FormSpeciesQuestion(FormTextQuestion):
 class MorphoDepotSearchForm():
     """Customized interface to specify MorphoDepot searches"""
 
-    questionsToIgnore = ['iDigBioURL', 'species', 'redistributionAcknowledgement', "githubRepoName"]
+    questionsToIgnore = ['iDigBioURL', 'species', 'redistributionAcknowledgement', "githubRepoName", "repoType"]
 
     def __init__(self, updateCallback=lambda : None):
         self.updateCallback = updateCallback
@@ -1275,6 +1284,16 @@ class MorphoDepotSearchForm():
         self.searchFormLayout.addRow(self.searchBox)
         self.searchBox.textChanged.connect(self.updateCallback)
         self.searchBox.setPlaceholderText("Fetch repository data to search...")
+
+        # Add repoType filter separately to control default
+        self.repoTypeComboBox = ctk.ctkCheckableComboBox()
+        self.searchFormLayout.addRow("Repository Type:", self.repoTypeComboBox)
+        repoTypeQuestionData = MorphoDepotAccessionForm.formQuestions["repoType"]
+        for option in repoTypeQuestionData[1]:
+            self.repoTypeComboBox.addItem(option)
+        model = self.repoTypeComboBox.checkableModel()
+        self.repoTypeComboBox.setCheckState(model.index(0, 0), qt.Qt.Checked) # Default to Archival
+        self.repoTypeComboBox.checkedIndexesChanged.connect(self.updateCallback)
 
         self.comboBoxesByQuestion = {}
         questions = MorphoDepotAccessionForm.formQuestions
@@ -1293,6 +1312,16 @@ class MorphoDepotSearchForm():
 
     def criteria(self):
         criteria = {"freeText": self.searchBox.text}
+
+        # Handle repoType separately
+        repoTypeQuestionData = MorphoDepotAccessionForm.formQuestions["repoType"]
+        criteria["repoType"] = []
+        model = self.repoTypeComboBox.checkableModel()
+        for row in range(model.rowCount()):
+            index = model.index(row, 0)
+            if self.repoTypeComboBox.checkState(index) == qt.Qt.Checked:
+                criteria["repoType"].append(repoTypeQuestionData[1][row])
+
         questions = MorphoDepotAccessionForm.formQuestions
         for question, questionData in questions.items():
             if question not in MorphoDepotSearchForm.questionsToIgnore:
@@ -2120,6 +2149,14 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
         excludedRepos = set()
         for nameWithOwner, repoData in self.repoDataByNameWithOwner.items():
             for question in criteria:
+                # Handle repoType with default assumption
+                if question == "repoType":
+                    repoValue = repoData.get("repoType", (None, "Archival (intended for long-term maintenance)"))[1]
+                    if repoValue not in criteria["repoType"]:
+                        excludedRepos.add(nameWithOwner)
+                    continue
+
+                # Handle other criteria
                 if question in repoData:
                     repoValue = repoData[question][1]
                     if repoValue.__class__() == []:

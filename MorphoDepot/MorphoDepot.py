@@ -198,6 +198,26 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.configureUI.ghPath.currentPath = os.path.normpath(self.logic.ghExecutablePath) if self.logic.ghExecutablePath else ""
         self.configureUI.ghPath.toolTip = "Restart Slicer after setting new path"
         self.annotateUI.forkManagementCollapsibleButton.enabled = False
+
+        # Add git user name and email fields
+        self.configureUI.gitConfigLayout = qt.QFormLayout()
+        self.configureUI.userNameLineEdit = qt.QLineEdit()
+        self.configureUI.userNameStatusLabel = qt.QLabel("Required for commits")
+        self.configureUI.userEmailLineEdit = qt.QLineEdit()
+        self.configureUI.userEmailStatusLabel = qt.QLabel("Required for commits")
+
+        self.configureUI.gitConfigLayout.addRow("User Name:", self.configureUI.userNameLineEdit)
+        self.configureUI.gitConfigLayout.addRow("", self.configureUI.userNameStatusLabel)
+        self.configureUI.gitConfigLayout.addRow("User Email:", self.configureUI.userEmailLineEdit)
+        self.configureUI.gitConfigLayout.addRow("", self.configureUI.userEmailStatusLabel)
+
+        # Assuming configureCollapsibleButton has a QVBoxLayout from the .ui file
+        # We insert the form layout before other widgets like the admin checkbox for better organization
+        if self.configureUI.configureCollapsibleButton.layout():
+            self.configureUI.configureCollapsibleButton.layout().insertLayout(0, self.configureUI.gitConfigLayout)
+
+        self.updateGitConfigInfo()
+
         self.configureUI.adminModeCheckBox = qt.QCheckBox("Administrator mode")
         self.configureUI.configureCollapsibleButton.layout().addWidget(self.configureUI.adminModeCheckBox)
         adminMode = slicer.util.settingsValue("MorphoDepot/adminMode", False, converter=slicer.util.toBool)
@@ -291,6 +311,8 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.configureUI.repoDirectory.comboBox().connect("currentTextChanged(QString)", self.onRepoDirectoryChanged)
         self.configureUI.gitPath.comboBox().connect("currentTextChanged(QString)", self.onGitPathChanged)
         self.configureUI.adminModeCheckBox.stateChanged.connect(self.onAdminModeChanged)
+        self.configureUI.userNameLineEdit.textChanged.connect(self.onUserNameChanged)
+        self.configureUI.userEmailLineEdit.textChanged.connect(self.onUserEmailChanged)
         self.configureUI.ghPath.comboBox().connect("currentTextChanged(QString)", self.onGhPathChanged)
         self.createUI.createRepository.clicked.connect(self.onCreateRepository)
         self.createUI.openRepository.clicked.connect(self.onOpenRepository)
@@ -340,6 +362,26 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         isAdmin = (state == qt.Qt.Checked)
         qt.QSettings().setValue("MorphoDepot/adminMode", isAdmin)
         self.tabWidget.setTabVisible(self.adminTabIndex, isAdmin)
+
+    def updateGitConfigInfo(self):
+        userName = self.logic.getGitConfig("user.name")
+        userEmail = self.logic.getGitConfig("user.email")
+
+        self.configureUI.userNameLineEdit.text = userName
+        self.configureUI.userNameStatusLabel.visible = not bool(userName)
+
+        self.configureUI.userEmailLineEdit.text = userEmail
+        self.configureUI.userEmailStatusLabel.visible = not bool(userEmail)
+
+    def onUserNameChanged(self, userName):
+        if userName:
+            self.logic.setGitConfig("user.name", userName)
+        self.configureUI.userNameStatusLabel.visible = not bool(userName)
+
+    def onUserEmailChanged(self, userEmail):
+        if userEmail:
+            self.logic.setGitConfig("user.email", userEmail)
+        self.configureUI.userEmailStatusLabel.visible = not bool(userEmail)
 
     # Create
     def onCreateRepository(self):
@@ -1443,6 +1485,26 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             raise RuntimeError(error_message)
         self.progressMethod(f"gh command finished: {result}")
         return result[0]
+
+    def getGitConfig(self, key):
+        """Get a value from the global git config."""
+        if not self.gitExecutablePath:
+            return ""
+        try:
+            command = [self.gitExecutablePath, 'config', '--global', key]
+            result = subprocess.check_output(command, universal_newlines=True).strip()
+            return result
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return ""
+
+    def setGitConfig(self, key, value):
+        """Set a value in the global git config."""
+        if not self.gitExecutablePath:
+            return
+        try:
+            subprocess.check_call([self.gitExecutablePath, 'config', '--global', key, value])
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            logging.error(f"Failed to set git config {key}: {e}")
 
     def ghJSON(self, command):
         """Wrapper around gh that returns json loaded data or an empty list on error"""

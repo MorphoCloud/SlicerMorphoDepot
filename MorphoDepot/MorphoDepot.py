@@ -1406,7 +1406,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     https://github.com/Slicer/Slicer/blob/main/Base/Python/slicer/ScriptedLoadableModule.py
     """
 
-    accessionFileFormatVersion = 1
+    accessionFileFormatVersion = 2
 
     def __init__(self, progressMethod = None) -> None:
         """Called when the logic class is instantiated. Can be used for initializing member variables."""

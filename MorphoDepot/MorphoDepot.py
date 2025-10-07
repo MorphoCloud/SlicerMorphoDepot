@@ -842,10 +842,12 @@ class MorphoDepotAccessionForm():
     """Customized interface to collect data about MorphoDepot accessions"""
 
     sectionTitles = {
+        0: "Subject Type",
         1: "Acquisition type",
         2: "Accessioned specimen",
         3: "Species information",
         4: "Image data description",
+        "4a": "Subject Description",
         5: "Partial specimen",
         6: "Licensing",
         7: "Github"
@@ -855,7 +857,21 @@ class MorphoDepotAccessionForm():
         # each question is a tuple of question, answer options, and tooltip
         # This info is pure data, but is closely coupled to the GUI and validation code below for usability
 
+        # section 4a
+        "otherSubjectDescription" : (
+            "Please describe the subject of the data.",
+            "",
+            "Provide a description for this non-biological subject."
+        ),
         # section 1
+        "subjectType" : (
+            "What is the subject type?",
+            ["Biological specimen", "Other"],
+            "Select the type of subject for this data."
+        ),
+
+
+
         "specimenSource" : (
             "Is your data from a commercially acquired organism or from an accessioned specimen (i.e., from a natural history collection)?",
            ["Non-accessioned", "Accessioned specimen"],
@@ -944,7 +960,7 @@ class MorphoDepotAccessionForm():
         """based on this form: https://docs.google.com/forms/d/1HbSL2lmslmeAggim4qlxjcyLy6KhQWcNPisrURA2Udo/edit"""
         self.workflowMode = workflowMode
         self.validationCallback = validationCallback
-        sectionCount = 7
+        sectionKeys = [0, 1, 2, 3, 4, "4a", 5, 6, 7]
         self.form = qt.QWidget()
         layout = qt.QVBoxLayout()
         self.form.setLayout(layout)
@@ -957,16 +973,16 @@ class MorphoDepotAccessionForm():
             self.topWidget = self.form
         self.sectionWidgets = {}
         self.sectionSections = {}
-        for section in range(1,1+sectionCount):
+        for sectionKey in sectionKeys:
             sectionWidget = qt.QWidget()
             sectionLayout = qt.QVBoxLayout()
             sectionWidget.setLayout(sectionLayout)
-            sectionLabel = qt.QLabel(f"Section {section}: {MorphoDepotAccessionForm.sectionTitles[section]}")
-            sectionLayout.addWidget(sectionLabel)
+            sectionTitle = f"Section {sectionKey}: {MorphoDepotAccessionForm.sectionTitles[sectionKey]}"
+            sectionLayout.addWidget(qt.QLabel(sectionTitle))
             sectionSection = qt.QWidget()
             sectionSectionLayout = qt.QVBoxLayout()
             sectionSection.setLayout(sectionSectionLayout)
-            self.sectionSections[section] = sectionSection
+            self.sectionSections[sectionKey] = sectionSection
 
             if self.workflowMode:
                 bottomRow = qt.QWidget()
@@ -977,20 +993,27 @@ class MorphoDepotAccessionForm():
                 bottomRowLayout.addWidget(prev)
                 bottomRowLayout.addWidget(next)
                 sectionLayout.addWidget(bottomRow)
-                if section > 1:
-                    prev.connect("clicked()", lambda section=section: self.showSection(section-1))
+                currentIndex = sectionKeys.index(sectionKey)
+                if currentIndex > 0:
+                    prev.connect("clicked()", lambda prevIndex=currentIndex-1: self.showSection(sectionKeys[prevIndex]))
                 else:
                     prev.enabled = False
-                if section < sectionCount:
-                    next.connect("clicked()", lambda section=section: self.showSection(section+1))
+                if currentIndex < len(sectionKeys) - 1:
+                    next.connect("clicked()", lambda nextIndex=currentIndex+1: self.showSection(sectionKeys[nextIndex]))
                 else:
                     next.enabled = False
 
-            self.sectionWidgets[section] = sectionWidget
+            self.sectionWidgets[sectionKey] = sectionWidget
             self.form.layout().addWidget(sectionWidget)
 
         form = MorphoDepotAccessionForm.formQuestions
         self.questions = {}
+
+        # section 0
+        layout = self.sectionWidgets[0].layout()
+        q,a,t = form["subjectType"]
+        self.questions["subjectType"] = FormRadioQuestion(q, a, self.validateForm)
+        layout.addWidget(self.questions["subjectType"].questionBox)
 
         # section 1
         layout = self.sectionWidgets[1].layout()
@@ -1039,6 +1062,12 @@ class MorphoDepotAccessionForm():
         self.questions["imageContents"] = FormRadioQuestion(q, a, self.validateForm)
         layout.addWidget(self.questions["imageContents"].questionBox)
 
+        # section 4a
+        layout = self.sectionWidgets["4a"].layout()
+        q,a,t = form["otherSubjectDescription"]
+        self.questions["otherSubjectDescription"] = FormTextQuestion(q, self.validateForm)
+        layout.addWidget(self.questions["otherSubjectDescription"].questionBox)
+
         # section 5
         layout = self.sectionWidgets[5].layout()
         q,a,t = form["anatomicalAreas"]
@@ -1066,7 +1095,9 @@ class MorphoDepotAccessionForm():
         layout.addWidget(self.questions["repoType"].questionBox)
 
         if self.workflowMode:
-            self.showSection(1)
+            self.showSection(0)
+
+        self.validateForm()
 
     def showSection(self, section):
         if self.workflowMode:
@@ -1077,46 +1108,66 @@ class MorphoDepotAccessionForm():
     def validateForm(self, arguments=None):
 
         # first, update the visibility of dependent sections
-        if self.questions["specimenSource"].answer() == "Non-accessioned":
-            self.sectionWidgets[2].hide()
-        else:
-            self.sectionWidgets[2].show()
-            if self.questions["iDigBioAccessioned"].answer() == "Yes":
-                self.questions["iDigBioURL"].questionBox.show()
-                self.gotoiDigBioButton.show()
+        isBiological = (self.questions["subjectType"].answer() == "Biological specimen")
+
+        self.sectionWidgets[1].setVisible(isBiological)
+        self.sectionWidgets[2].setVisible(isBiological)
+        self.sectionWidgets[3].setVisible(isBiological)
+        self.sectionWidgets["4a"].setVisible(not isBiological)
+        # Also hide some questions in section 4 for non-biological
+        self.questions["contrastEnhancement"].questionBox.setVisible(isBiological)
+        self.questions["imageContents"].questionBox.setVisible(isBiological)
+
+        if isBiological:
+            if self.questions["specimenSource"].answer() == "Non-accessioned":
+                self.sectionWidgets[2].hide()
             else:
-                self.questions["iDigBioURL"].questionBox.hide()
-                self.gotoiDigBioButton.hide()
+                self.sectionWidgets[2].show()
+                if self.questions["iDigBioAccessioned"].answer() == "Yes":
+                    self.questions["iDigBioURL"].questionBox.show()
+                    self.gotoiDigBioButton.show()
+                else:
+                    self.questions["iDigBioURL"].questionBox.hide()
+                    self.gotoiDigBioButton.hide()
 
-        # Section 3 is always visible
-        self.sectionWidgets[3].show()
-
-        if self.questions["imageContents"].answer() == "Partial specimen":
-            self.sectionWidgets[5].show()
-        else:
+            if self.questions["imageContents"].answer() == "Partial specimen":
+                self.sectionWidgets[5].show()
+            else:
+                self.sectionWidgets[5].hide()
+        else: # Not biological
+            self.sectionWidgets[2].hide()
+            self.sectionWidgets[3].hide()
             self.sectionWidgets[5].hide()
 
         # then check if required elements have been filled out
         valid = True
 
-        if self.questions["specimenSource"].answer() == "":
+        if self.questions["subjectType"].answer() == "":
             valid = False
-        if self.questions["specimenSource"].answer() == "Accessioned specimen":
-            if self.questions["iDigBioAccessioned"].answer() == "Yes":
-                if not self.questions["iDigBioURL"].answer().startswith("https://portal.idigbio.org/portal/records"):
-                    valid = False
 
-        # Section 3 is always required
-        valid = valid and self.questions["species"].answer() != ""
-        valid = valid and (len(self.questions["species"].answer().split()) == 2)
-        valid = valid and self.questions["biologicalSex"].answer() != ""
-        valid = valid and self.questions["developmentalStage"].answer() != ""
+        if isBiological:
+            if self.questions["specimenSource"].answer() == "":
+                valid = False
+            if self.questions["specimenSource"].answer() == "Accessioned specimen":
+                if self.questions["iDigBioAccessioned"].answer() == "Yes":
+                    if not self.questions["iDigBioURL"].answer().startswith("https://portal.idigbio.org/portal/records"):
+                        valid = False
+
+            # Section 3 is always required for biological
+            valid = valid and self.questions["species"].answer() != ""
+            valid = valid and (len(self.questions["species"].answer().split()) == 2)
+            valid = valid and self.questions["biologicalSex"].answer() != ""
+            valid = valid and self.questions["developmentalStage"].answer() != ""
+
+            if self.questions["imageContents"].answer() == "Partial specimen":
+                valid = valid and self.questions["anatomicalAreas"].answer() != []
+        else: # Not biological
+            valid = valid and self.questions["otherSubjectDescription"].answer() != ""
 
         valid = valid and self.questions["modality"].answer() != ""
-        valid = valid and self.questions["contrastEnhancement"].answer() != ""
-        valid = valid and self.questions["imageContents"].answer() != ""
-        if self.questions["imageContents"].answer() == "Partial specimen":
-            valid = valid and self.questions["anatomicalAreas"].answer() != []
+        if isBiological:
+            valid = valid and self.questions["contrastEnhancement"].answer() != ""
+            valid = valid and self.questions["imageContents"].answer() != ""
         valid = valid and self.questions["redistributionAcknowledgement"].answer() != ""
         valid = valid and self.questions["license"].answer() != ""
         valid = valid and self.questions["githubRepoName"].answer() != ""
@@ -1267,7 +1318,7 @@ class FormSpeciesQuestion(FormTextQuestion):
 class MorphoDepotSearchForm():
     """Customized interface to specify MorphoDepot searches"""
 
-    questionsToIgnore = ['iDigBioURL', 'species', 'redistributionAcknowledgement', "githubRepoName", "repoType"]
+    questionsToIgnore = ['iDigBioURL', 'species', 'redistributionAcknowledgement', "githubRepoName", "repoType", "otherSubjectDescription"]
 
     def __init__(self, updateCallback=lambda : None):
         self.updateCallback = updateCallback
@@ -1304,9 +1355,13 @@ class MorphoDepotSearchForm():
                 for option in questionData[1]:
                     comboBox.addItem(option)
                 model = comboBox.checkableModel()
-                for row in range(model.rowCount()):
-                    index = model.index(row,0)
-                    comboBox.setCheckState(index, qt.Qt.Checked)
+                if question == "subjectType":
+                    # Default to "Biological specimen" only
+                    comboBox.setCheckState(model.index(0, 0), qt.Qt.Checked)
+                else:
+                    for row in range(model.rowCount()):
+                        index = model.index(row,0)
+                        comboBox.setCheckState(index, qt.Qt.Checked)
                 comboBox.checkedIndexesChanged.connect(self.updateCallback)
                 self.comboBoxesByQuestion[question] = comboBox
 
@@ -2156,6 +2211,13 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
                         excludedRepos.add(nameWithOwner)
                     continue
 
+                if question == "subjectType":
+                    # if subjectType is not present, assume "Biological specimen"
+                    repoValue = repoData.get("subjectType", (None, "Biological specimen"))[1]
+                    if repoValue not in criteria["subjectType"]:
+                        excludedRepos.add(nameWithOwner)
+                    continue
+
                 # Handle other criteria
                 if question in repoData:
                     repoValue = repoData[question][1]
@@ -2173,6 +2235,8 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
         matchString = f"*{criteria['freeText'].lower()}*"
         matchingRepos = set()
         textFields = ["githubRepoName", "species"]
+        if "Other" in criteria.get("subjectType", []):
+            textFields.append("otherSubjectDescription")
         for nameWithOwner, repoData in self.repoDataByNameWithOwner.items():
             if fnmatch.fnmatch(nameWithOwner, matchString):
                 matchingRepos.add(nameWithOwner)

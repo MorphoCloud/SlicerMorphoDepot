@@ -297,6 +297,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.searchUI.searchForm = MorphoDepotSearchForm(updateCallback=self.doSearch)
         self.searchUI.searchCollapsibleButton.layout().addWidget(self.searchUI.searchForm.topWidget)
         self.searchUI.searchForm.topWidget.enabled = False
+        self.searchUI.searchCollapsibleButton.collapsed = True
         self.searchUI.resultsTable = qt.QTableView()
         self.searchUI.resultsTable.setContextMenuPolicy(qt.Qt.CustomContextMenu)
         self.searchUI.resultsTable.customContextMenuRequested.connect(self.onSearchResultsContextMenu)
@@ -304,6 +305,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.searchUI.resultsTable.setModel(self.searchUI.resultsModel)
         self.searchUI.resultsTable.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
         self.searchUI.resultsTable.setEditTriggers(qt.QAbstractItemView.NoEditTriggers)
+        self.searchUI.refreshButton.text = "Load Searchable Repository Data"
         self.searchUI.resultsCollapsibleButton.layout().addWidget(self.searchUI.resultsTable)
 
         # Connections
@@ -710,6 +712,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             self.logic.refreshSearchCache()
             self.searchUI.searchForm.searchBox.setPlaceholderText("Search...")
             self.searchUI.searchForm.topWidget.enabled = True
+            self.searchUI.searchCollapsibleButton.collapsed = False
             self.doSearch()
 
     def doSearch(self):

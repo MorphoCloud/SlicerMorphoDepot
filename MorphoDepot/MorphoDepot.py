@@ -773,7 +773,8 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             tooltipParts = [f"<b>{repoName}</b> by <b>{owner}</b><br><hr>"]
             for key in MorphoDepotAccessionForm.formQuestions.keys():
                 if key in repoData:
-                    questionText, answer = repoData[key]
+                    questionText = MorphoDepotAccessionForm.formQuestions[key][0]
+                    _, answer = repoData[key]
                     answerStr = ", ".join(answer) if isinstance(answer, list) else str(answer)
                     displayAnswer = answerStr if answerStr else "<i>Not provided</i>"
                     tooltipParts.append(f"<i>{questionText}</i><br>{displayAnswer}<br>")
@@ -914,7 +915,7 @@ class MorphoDepotAccessionForm():
             ""
         ),
         "contrastEnhancement" : (
-            "Is there contrast enhancement treatment applied to the specimen (iodine, phosphotungstenic acid, gadolinium, casting agents, etc)?",
+            "Is there contrast enhancement treatment applied to the specimen?",
             ["Yes", "No"],
             ""
         ),
@@ -1055,8 +1056,8 @@ class MorphoDepotAccessionForm():
         q,a,t = form["modality"]
         self.questions["modality"] = FormRadioQuestion(q, a, self.validateForm)
         layout.addWidget(self.questions["modality"].questionBox)
-        q,a,t = form["contrastEnhancement"]
-        self.questions["contrastEnhancement"] = FormRadioQuestion("Is there contrast enhancement treatment applied to the specimen (iodine, phosphotungstenic acid, gadolinium, casting agents, etc)?", ["Yes", "No"], self.validateForm)
+        q,a,t = form["contrastEnhancement"] # "Is there contrast enhancement treatment applied to the specimen (iodine, phosphotungstenic acid, gadolinium, casting agents, etc)?"
+        self.questions["contrastEnhancement"] = FormRadioQuestion(q, a, self.validateForm)
         layout.addWidget(self.questions["contrastEnhancement"].questionBox)
         q,a,t = form["imageContents"]
         self.questions["imageContents"] = FormRadioQuestion(q, a, self.validateForm)
@@ -1188,13 +1189,13 @@ class FormBaseQuestion():
         self.questionBox = qt.QWidget()
         self.questionLayout = qt.QVBoxLayout()
         self.questionBox.setLayout(self.questionLayout)
-        self.questionText = qt.QTextEdit(question)
-        self.questionText.readOnly = True
-        self.questionText.maximumHeight = self.heightForString(question)
+        self.questionText = qt.QLabel(question)
+        self.questionText.setWordWrap(True)
         self.questionLayout.addWidget(self.questionText)
 
-    def heightForString(self, s):
-        return max(len(s) // 2.5, 30)
+    def answer(self):
+        # To be implemented by subclasses
+        return None
 
 class FormRadioQuestion(FormBaseQuestion):
     def __init__(self, question, options, validator):
@@ -1320,6 +1321,18 @@ class MorphoDepotSearchForm():
 
     questionsToIgnore = ['iDigBioURL', 'species', 'redistributionAcknowledgement', "githubRepoName", "repoType", "otherSubjectDescription"]
 
+    # Use shorter labels for the search form to allow for a narrower UI
+    shortLabels = {
+        "specimenSource": "Specimen Source:",
+        "iDigBioAccessioned": "In iDigBio:",
+        "modality": "Modality:",
+        "contrastEnhancement": "Contrast Enhanced:",
+        "imageContents": "Image Contents:",
+        "subjectType": "Subject Type:",
+        "biologicalSex": "Sex:",
+        "developmentalStage": "Stage:",
+        "anatomicalAreas": "Anatomical Areas:",
+    }
     def __init__(self, updateCallback=lambda : None):
         self.updateCallback = updateCallback
         self.form = qt.QWidget()
@@ -1350,8 +1363,9 @@ class MorphoDepotSearchForm():
         questions = MorphoDepotAccessionForm.formQuestions
         for question, questionData in questions.items():
             if question not in MorphoDepotSearchForm.questionsToIgnore:
+                label = MorphoDepotSearchForm.shortLabels.get(question, question)
                 comboBox = ctk.ctkCheckableComboBox()
-                self.searchFormLayout.addRow(question, comboBox)
+                self.searchFormLayout.addRow(label, comboBox)
                 for option in questionData[1]:
                     comboBox.addItem(option)
                 model = comboBox.checkableModel()

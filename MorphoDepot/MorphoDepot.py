@@ -1695,7 +1695,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 if role == "segmenter":
                     parties = [pr['author']['login']]
                 elif role == "reviewer":
-                    parties = [issue['author']['login'] for issue in pr['closingIssuesReferences']['nodes']]
+                    parties = [issue['repository']['owner']['login'] for issue in pr['closingIssuesReferences']['nodes']]
                 else:
                     raise BaseException(f"Unknown role {role}")
                 if me in parties:

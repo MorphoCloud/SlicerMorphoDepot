@@ -2000,6 +2000,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 --undo
                 --repo {upstreamNameWithOwner}
             """)
+        self.ghTopicClearCache()
 
     def approvePR(self, message=""):
         pr = self.issuePR(role="reviewer")
@@ -2024,6 +2025,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         """.replace("\n"," ").split()
         commandList += ["--body", "Merging and closing"]
         self.gh(commandList)
+        self.ghTopicClearCache()
 
     def getReleases(self):
         """Get list of releases for the current repository."""

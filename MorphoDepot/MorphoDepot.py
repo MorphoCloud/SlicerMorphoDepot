@@ -366,14 +366,31 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.tabWidget.setTabVisible(self.adminTabIndex, isAdmin)
 
     def updateGitConfigInfo(self):
-        userName = self.logic.getGitConfig("user.name")
-        userEmail = self.logic.getGitConfig("user.email")
+        userNameLabel = self.configureUI.gitConfigLayout.labelForField(self.configureUI.userNameLineEdit)
+        userEmailLabel = self.configureUI.gitConfigLayout.labelForField(self.configureUI.userEmailLineEdit)
 
-        self.configureUI.userNameLineEdit.text = userName
-        self.configureUI.userNameStatusLabel.visible = not bool(userName)
+        gitIsWorking = self.logic.gitExecutablePath and self.logic.checkCommand([self.logic.gitExecutablePath, '--version'])
 
-        self.configureUI.userEmailLineEdit.text = userEmail
-        self.configureUI.userEmailStatusLabel.visible = not bool(userEmail)
+        self.configureUI.userNameLineEdit.enabled = gitIsWorking
+        self.configureUI.userEmailLineEdit.enabled = gitIsWorking
+        if userNameLabel: userNameLabel.enabled = gitIsWorking
+        if userEmailLabel: userEmailLabel.enabled = gitIsWorking
+
+        if gitIsWorking:
+            userName = self.logic.getGitConfig("user.name")
+            userEmail = self.logic.getGitConfig("user.email")
+
+            self.configureUI.userNameLineEdit.text = userName
+            self.configureUI.userNameStatusLabel.visible = not bool(userName)
+
+            self.configureUI.userEmailLineEdit.text = userEmail
+            self.configureUI.userEmailStatusLabel.visible = not bool(userEmail)
+        else:
+            self.configureUI.userNameLineEdit.clear()
+            self.configureUI.userEmailLineEdit.clear()
+            self.configureUI.userNameStatusLabel.visible = False
+            self.configureUI.userEmailStatusLabel.text = "Git must be correctly installed in order to enable configuration"
+            self.configureUI.userEmailStatusLabel.visible = True
 
     def onUserNameChanged(self, userName):
         if userName:

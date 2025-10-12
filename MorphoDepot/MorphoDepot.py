@@ -1466,12 +1466,11 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         gitPath = os.path.normpath(slicer.util.settingsValue("MorphoDepot/gitPath", "") or "")
         ghPath = os.path.normpath(slicer.util.settingsValue("MorphoDepot/ghPath", "") or "")
         if not gitPath or gitPath == "" or gitPath == ".":
-            gitPath = shutil.which("git")
+            gitPath = shutil.which("git") or ""
         if not ghPath or ghPath == "" or ghPath == ".":
-            ghPath = shutil.which("gh")
-        if gitPath and ghPath:
-            self.gitExecutablePath = gitPath
-            self.ghExecutablePath = ghPath
+            ghPath = shutil.which("gh") or ""
+        self.gitExecutablePath = gitPath
+        self.ghExecutablePath = ghPath
 
         qt.QSettings().setValue("MorphoDepot/gitPath", self.gitExecutablePath)
         qt.QSettings().setValue("MorphoDepot/ghPath", self.ghExecutablePath)

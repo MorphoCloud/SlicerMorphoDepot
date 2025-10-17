@@ -1200,7 +1200,7 @@ class MorphoDepotAccessionForm():
     def accessionData(self):
         data = {}
         for key in MorphoDepotAccessionForm.formQuestions.keys():
-            data[key] = (self.questions[key].questionText.document.toPlainText(), self.questions[key].answer())
+            data[key] = (self.questions[key].questionLabel.text, self.questions[key].answer())
         return data
 
 
@@ -1209,9 +1209,9 @@ class FormBaseQuestion():
         self.questionBox = qt.QWidget()
         self.questionLayout = qt.QVBoxLayout()
         self.questionBox.setLayout(self.questionLayout)
-        self.questionText = qt.QLabel(question)
-        self.questionText.setWordWrap(True)
-        self.questionLayout.addWidget(self.questionText)
+        self.questionLabel = qt.QLabel(question)
+        self.questionLabel.setWordWrap(True)
+        self.questionLayout.addWidget(self.questionLabel)
 
     def answer(self):
         # To be implemented by subclasses

@@ -1731,10 +1731,11 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                     parties = [issue['repository']['owner']['login'] for issue in pr['closingIssuesReferences']['nodes']]
                 else:
                     raise BaseException(f"Unknown role {role}")
+                issueTitles = [issue['title'] for issue in pr['closingIssuesReferences']['nodes']]
                 if me in parties:
                     repoName = repo['nameWithOwner'].split("/")[1]
                     prList.append({'number': pr['number'],
-                                      'title': pr['title'],
+                                      'title': [pr['title'], issueTitles],
                                       'isDraft': pr['isDraft'],
                                       'author': {'login': pr['author']['login']},
                                       'repository': { 'name': repoName, 'nameWithOwner': repo['nameWithOwner']}})

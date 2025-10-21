@@ -471,7 +471,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         prList = self.logic.prList(role="segmenter")
         for pr in prList:
             prStatus = 'draft' if pr['isDraft'] else 'ready for review'
-            prTitle = f"{pr['title']} {pr['repository']['nameWithOwner']}: {prStatus}"
+            prTitle = f"{pr['title']} {pr['issueTitles']} {pr['repository']['nameWithOwner']}: {prStatus}"
             item = qt.QListWidgetItem(prTitle)
             self.prsByItem[item] = pr
             self.annotateUI.prList.addItem(item)
@@ -637,7 +637,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             prList = self.logic.prList(role="reviewer")
             for pr in prList:
                 prStatus = 'draft' if pr['isDraft'] else 'ready for review'
-                prTitle = f"{pr['title']} {pr['repository']['nameWithOwner']}: {prStatus}"
+                prTitle = f"{pr['title']} {pr['issueTitles']} {pr['repository']['nameWithOwner']}: {prStatus}"
                 item = qt.QListWidgetItem(prTitle)
                 self.prsByItem[item] = pr
                 self.reviewUI.prList.addItem(item)
@@ -1735,7 +1735,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 if me in parties:
                     repoName = repo['nameWithOwner'].split("/")[1]
                     prList.append({'number': pr['number'],
-                                      'title': [pr['title'], issueTitles],
+                                      'title': pr['title'],
+                                      'issueTitles': issueTitles,
                                       'isDraft': pr['isDraft'],
                                       'author': {'login': pr['author']['login']},
                                       'repository': { 'name': repoName, 'nameWithOwner': repo['nameWithOwner']}})

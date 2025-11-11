@@ -424,12 +424,22 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
 
         slicer.util.showStatusMessage(f"Creating...")
         accessionData = self.createUI.accessionForm.accessionData()
-        with slicer.util.tryWithErrorDisplay(_("Trouble creating repository"), waitCursor=True):
-            accessionData['scanDimensions'] = str(sourceVolume.GetImageData().GetDimensions())
-            accessionData['scanSpacing'] = str(sourceVolume.GetSpacing())
-            self.logic.createAccessionRepo(sourceVolume, colorTable, accessionData, sourceSegmentation)
+        accessionData['scanDimensions'] = str(sourceVolume.GetImageData().GetDimensions())
+        accessionData['scanSpacing'] = str(sourceVolume.GetSpacing())
+
+        try:
+            with slicer.util.tryWithErrorDisplay(_("Trouble creating repository"), waitCursor=True):
+                self.logic.createAccessionRepo(sourceVolume, colorTable, accessionData, sourceSegmentation)
+        except Exception as e:
+            slicer.util.showStatusMessage(f"Cleaning up...")
+            repoName = accessionData['githubRepoName'][1]
+            repoDir = os.path.join(self.logic.localRepositoryDirectory(), repoName)
+            if os.path.exists(repoDir):
+                shutil.rmtree(repoDir)
+
         self.createUI.createRepository.enabled = False
         self.createUI.openRepository.enabled = True
+        slicer.util.showStatusMessage(f"")
 
     def onOpenRepository(self):
         nameWithOwner = self.logic.nameWithOwner("origin")
@@ -2098,7 +2108,11 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         repoFileNames = []
         sourceFileName = sourceVolume.GetName()
         sourceFilePath = os.path.join(repoDir, sourceFileName) + ".nrrd"
-        slicer.util.saveNode(sourceVolume, sourceFilePath)
+        slicer.util.saveNode(sourceVolume, sourceFilePath, properties={'useCompression': True})
+
+        githubReleaseAssetSizeLimit = 2 * 2**30 - 1 # 2GB - 1
+        if os.path.getsize(sourceFilePath) > githubReleaseAssetSizeLimit:
+            raise ValueError("Volume file is too large, crop or resample so that saved size is less than 2GB")
 
         # calculate and save checksum
         checksum = slicer.util.computeChecksum('SHA256', sourceFilePath)

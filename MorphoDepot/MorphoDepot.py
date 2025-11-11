@@ -1199,7 +1199,7 @@ class MorphoDepotAccessionForm():
         if isBiological:
             valid = valid and self.questions["contrastEnhancement"].answer() != ""
             valid = valid and self.questions["imageContents"].answer() != ""
-        valid = valid and self.questions["redistributionAcknowledgement"].answer() != ""
+        valid = valid and self.questions["redistributionAcknowledgement"].answer() != []
         valid = valid and self.questions["license"].answer() != ""
         valid = valid and self.questions["githubRepoName"].answer() != ""
         valid = valid and self.questions["repoType"].answer() != ""

@@ -407,6 +407,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         if self.createUI.inputSelector.currentNode() == None or self.createUI.colorSelector.currentNode() == None:
             slicer.util.errorDisplay("Need to select volume and color table")
             return
+
         sourceVolume = self.createUI.inputSelector.currentNode()
         sourceSegmentation = self.createUI.segmentationSelector.currentNode()
         colorTable = self.createUI.colorSelector.currentNode()
@@ -426,6 +427,12 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         accessionData = self.createUI.accessionForm.accessionData()
         accessionData['scanDimensions'] = str(sourceVolume.GetImageData().GetDimensions())
         accessionData['scanSpacing'] = str(sourceVolume.GetSpacing())
+
+        if accessionData["repoType"][1] == "Archival (intended for long-term maintenance)":
+            for colorIndex in range(colorTable.GetNumberOfColors()):
+                if colorTable.GetTerminologyAsString(colorIndex) == "~^^~^^~^^~~^^~^^~":
+                    slicer.util.errorDisplay(f"Selected Color table is missing terminology for index {colorIndex}, {colorTable.GetColorName(colorIndex)}")
+                    return
 
         try:
             with slicer.util.tryWithErrorDisplay(_("Trouble creating repository"), waitCursor=True):

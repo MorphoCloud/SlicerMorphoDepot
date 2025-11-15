@@ -812,12 +812,21 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         slicer.util.showStatusMessage(f"Updating search results")
         self.searchUI.resultsModel.clear()
         self.searchResultsByItem = {}
-        headers = ["Repository", "Owner", "Species", "Modality", "Spacing", "Dimensions"]
+        headers = ["", "Repository", "Owner", "Species", "Modality", "Size (GB)", "Spacing", "Dimensions"]
         self.searchUI.resultsModel.setHorizontalHeaderLabels(headers)
         for repoDataKey, repoData in results.items():
             repoName,owner = self.repoDataKetToRepoNameAndOwner(repoDataKey)
             species = repoData.get('species', [None, "N/A"])[1]
             modality = repoData.get('modality', [None, "N/A"])[1]
+
+            screenshotCount = repoData.get('screenshotCount', 0)
+            screenshotItem = qt.QStandardItem()
+
+            sizeText = "N/A"
+            volumeSize = repoData.get('volumeSize')
+            if volumeSize is not None:
+                sizeInGB = volumeSize / (1024**3)
+                sizeText = f"{sizeInGB:.2f}"
 
             spacingText = "N/A"
             spacingStr = repoData.get('scanSpacing')
@@ -844,33 +853,65 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             ownerItem = qt.QStandardItem(owner)
             speciesItem = qt.QStandardItem(species)
             modalityItem = qt.QStandardItem(modality)
+            sizeItem = qt.QStandardItem(sizeText)
             spacingItem = qt.QStandardItem(spacingText)
             dimensionsItem = qt.QStandardItem(dimensionsText)
+
+            if screenshotCount > 0:
+                screenshotItem.setIcon(qt.QIcon(":/Icons/ViewPoint.png"))
+                screenshotItem.setText(str(screenshotCount))
+                screenshotItem.setToolTip(f"{screenshotCount} screenshots available")
 
             # Store the full data in the first item of the row
             repoItem.setData(repoData, qt.Qt.UserRole)
             repoItem.setData(repoDataKey, qt.Qt.UserRole + 1)
 
-            rowItems = [repoItem, ownerItem, speciesItem, modalityItem, spacingItem, dimensionsItem]
-            tooltipText = json.dumps(repoData, indent=2)
+            rowItems = [screenshotItem, repoItem, ownerItem, speciesItem, modalityItem, sizeItem, spacingItem, dimensionsItem]
 
-            # Create a formatted HTML tooltip
+            # Create a rich HTML tooltip
             tooltipParts = [f"<b>{repoName}</b> by <b>{owner}</b><br><hr>"]
-            for key in MorphoDepotAccessionForm.formQuestions.keys():
-                if key in repoData:
-                    questionText = MorphoDepotAccessionForm.formQuestions[key][0]
-                    _, answer = repoData[key]
-                    answerStr = ", ".join(answer) if isinstance(answer, list) else str(answer)
-                    displayAnswer = answerStr if answerStr else "<i>Not provided</i>"
-                    tooltipParts.append(f"<i>{questionText}</i><br>{displayAnswer}<br>")
+            tooltipParts.append("<table>")
+            tooltipParts.append(f"<tr><td><b>Species:</b></td><td>{species}</td></tr>")
+            tooltipParts.append(f"<tr><td><b>Size (GB):</b></td><td>{sizeText}</td></tr>")
+            tooltipParts.append(f"<tr><td><b>Modality:</b></td><td>{modality}</td></tr>")
+            tooltipParts.append(f"<tr><td><b>Spacing:</b></td><td>{spacingText}</td></tr>")
+            tooltipParts.append(f"<tr><td><b>Dimensions:</b></td><td>{dimensionsText}</td></tr>")
+            tooltipParts.append("</table>")
+
+            if screenshotCount > 0 and 'screenshotCaptions' in repoData:
+                tooltipParts.append("<hr><b>Screenshots:</b><br>")
+                screenshotCacheDir = os.path.join(self.logic.localRepositoryDirectory(), "MorphoDepotCaches", "Screenshots")
+                screenshotCaptions = repoData.get('screenshotCaptions', {})
+                # Limit to 5 thumbnails to avoid overly large tooltips
+                for i, (filename, caption) in enumerate(screenshotCaptions.items()):
+                    if i >= 5:
+                        tooltipParts.append(f"<i>...and {screenshotCount - 5} more.</i>")
+                        break
+
+                    urlPrefix = "https://raw.githubusercontent.com"
+                    imageURL = f"{urlPrefix}/{owner}/{repoName}/main/screenshots/{filename}"
+                    localImagePath = os.path.join(screenshotCacheDir, owner, repoName, filename)
+
+                    if not os.path.exists(localImagePath):
+                        try:
+                            os.makedirs(os.path.dirname(localImagePath), exist_ok=True)
+                            slicer.util.downloadFile(imageURL, localImagePath)
+                        except Exception as e:
+                            logging.warning(f"Could not download screenshot {imageURL}: {e}")
+
+                    if os.path.exists(localImagePath):
+                        tooltipParts.append(f'<img src="file:///{localImagePath}" width="128"> ')
+
             tooltipText = "".join(tooltipParts)
 
+            # Set the same tooltip for all items in the row
             for item in rowItems:
                 item.setToolTip(tooltipText)
 
             self.searchUI.resultsModel.appendRow(rowItems)
 
         self.searchUI.resultsTable.resizeColumnsToContents()
+        self.searchUI.resultsTable.setColumnWidth(0, 40) # Screenshot column
         slicer.util.showStatusMessage(f"{len(results.keys())} matching repositories")
 
     def onSearchResultsContextMenu(self, point):
@@ -878,7 +919,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         if not index.isValid():
             return
 
-        item = self.searchUI.resultsModel.item(index.row(), 0)
+        item = self.searchUI.resultsModel.item(index.row(), 1) # repo name is in column 1
         repoData = item.data(qt.Qt.UserRole)
         repoDataKey = item.data(qt.Qt.UserRole + 1)
         repoName, owner = self.repoDataKetToRepoNameAndOwner(repoDataKey)
@@ -900,7 +941,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         if not index.isValid():
             return
 
-        item = self.searchUI.resultsModel.item(index.row(), 0)
+        item = self.searchUI.resultsModel.item(index.row(), 1) # repo name is in column 1
         repoDataKey = item.data(qt.Qt.UserRole + 1)
         repoName, owner = self.repoDataKetToRepoNameAndOwner(repoDataKey)
         fullRepoName = f"{owner}/{repoName}"
@@ -2310,23 +2351,55 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
         self.repoDataByNameWithOwner = {}
 
         for repo in repos:
-            repoName = repo['name']
-            ownerLogin = repo['owner']['login']
-            nameWithOwner = f"{repoName}-{ownerLogin}"
-            filePath = f"{searchDirectory}/{nameWithOwner}-MorphoDepotAccession.json"
-            if os.path.exists(filePath):
-                fp = open(filePath)
-                self.repoDataByNameWithOwner[nameWithOwner] = json.loads(fp.read())
-            else:
+            try:
+                repoName = repo['name']
+                ownerLogin = repo['owner']['login']
+                nameWithOwner = f"{repoName}-{ownerLogin}"
+                filePath = f"{searchDirectory}/{nameWithOwner}-MorphoDepotAccession.json"
+
+                repoData = None
+                if os.path.exists(filePath):
+                    with open(filePath) as fp:
+                        repoData = json.load(fp)
+
                 urlPrefix = "https://raw.githubusercontent.com"
-                urlSuffix = "refs/heads/main/MorphoDepotAccession.json"
-                accessionURL = f"{urlPrefix}/{ownerLogin}/{repoName}/{urlSuffix}"
-                request = requests.get(accessionURL)
-                if request.status_code == 200:
-                    fp = open(filePath, "w")
-                    fp.write(request.text)
-                    fp.close()
-                    self.repoDataByNameWithOwner[nameWithOwner] = json.loads(request.text)
+                if not repoData:
+                    accessionURL = f"{urlPrefix}/{ownerLogin}/{repoName}/main/MorphoDepotAccession.json"
+                    request = requests.get(accessionURL)
+                    if request.status_code == 200:
+                        with open(filePath, "w") as fp:
+                            fp.write(request.text)
+                        repoData = json.loads(request.text)
+
+                if repoData:
+                    # Also fetch screenshot captions if they exist
+                    captionsURL = f"{urlPrefix}/{ownerLogin}/{repoName}/main/screenshots/captions.json"
+                    captions_request = requests.get(captionsURL)
+                    if captions_request.status_code == 200:
+                        captionsData = captions_request.json()
+                        repoData['screenshotCount'] = len(captionsData)
+                        repoData['screenshotCaptions'] = captionsData
+                    else:
+                        repoData['screenshotCount'] = 0
+                        repoData['screenshotCaptions'] = {}
+
+                    # Fetch volume size if not already cached in the repoData
+                    if 'volumeSize' not in repoData:
+                        sourceVolumeURL_path = f"{urlPrefix}/{ownerLogin}/{repoName}/main/source_volume"
+                        sourceVolumeURL_req = requests.get(sourceVolumeURL_path)
+                        if sourceVolumeURL_req.status_code == 200:
+                            volumeURL = sourceVolumeURL_req.text.strip()
+                            head_req = requests.head(volumeURL, allow_redirects=True)
+                            if head_req.status_code == 200 and 'Content-Length' in head_req.headers:
+                                repoData['volumeSize'] = int(head_req.headers['Content-Length'])
+                            else:
+                                repoData['volumeSize'] = None # Explicitly mark as checked but not found
+
+                    self.repoDataByNameWithOwner[nameWithOwner] = repoData
+            except Exception as e:
+                # Use a more specific name here since repo is a dict
+                repoIdentifier = f"{repo.get('owner', {}).get('login', 'N/A')}/{repo.get('name', 'N/A')}"
+                logging.warning(f"Could not process repo {repoIdentifier}: {e}")
 
 
     def search(self, criteria):

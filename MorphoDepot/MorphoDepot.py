@@ -448,7 +448,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         accessionData['scanSpacing'] = str(sourceVolume.GetSpacing())
 
         if accessionData["repoType"][1] == "Archival (intended for long-term maintenance)":
-            for colorIndex in range(colorTable.GetNumberOfColors()):
+            for colorIndex in range(1, colorTable.GetNumberOfColors()):
                 if colorTable.GetTerminologyAsString(colorIndex) == "~^^~^^~^^~~^^~^^~":
                     slicer.util.errorDisplay(f"Selected Color table is missing terminology for index {colorIndex}, {colorTable.GetColorName(colorIndex)}")
                     return

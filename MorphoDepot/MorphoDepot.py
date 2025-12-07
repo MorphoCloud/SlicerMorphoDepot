@@ -2355,7 +2355,9 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
                 repoName = repo['name']
                 ownerLogin = repo['owner']['login']
                 nameWithOwner = f"{repoName}-{ownerLogin}"
-                filePath = f"{searchDirectory}/{nameWithOwner}-MorphoDepotAccession.json"
+                filePath = f"{searchDirectory}/{nameWithOwner}-repoData.json"
+
+                self.progressMethod(f"Refreshing {nameWithOwner}")
 
                 repoData = None
                 if os.path.exists(filePath):
@@ -2367,39 +2369,48 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
                     accessionURL = f"{urlPrefix}/{ownerLogin}/{repoName}/main/MorphoDepotAccession.json"
                     request = requests.get(accessionURL)
                     if request.status_code == 200:
-                        with open(filePath, "w") as fp:
-                            fp.write(request.text)
                         repoData = json.loads(request.text)
+                    else:
+                        self.progressMethod(f"Failed to load {accessionURL}")
 
                 if repoData:
                     # Also fetch screenshot captions if they exist
-                    captionsURL = f"{urlPrefix}/{ownerLogin}/{repoName}/main/screenshots/captions.json"
-                    captions_request = requests.get(captionsURL)
-                    if captions_request.status_code == 200:
-                        captionsData = captions_request.json()
-                        repoData['screenshotCount'] = len(captionsData)
-                        repoData['screenshotCaptions'] = captionsData
-                    else:
-                        repoData['screenshotCount'] = 0
-                        repoData['screenshotCaptions'] = {}
+                    if 'screenshotCount' not in repoData:
+                        captionsURL = f"{urlPrefix}/{ownerLogin}/{repoName}/main/screenshots/captions.json"
+                        captions_request = requests.get(captionsURL)
+                        if captions_request.status_code == 200:
+                            captionsData = captions_request.json()
+                            repoData['screenshotCount'] = len(captionsData)
+                            repoData['screenshotCaptions'] = captionsData
+                        else:
+                            repoData['screenshotCount'] = 0
+                            repoData['screenshotCaptions'] = {}
 
                     # Fetch volume size if not already cached in the repoData
                     if 'volumeSize' not in repoData:
                         sourceVolumeURL_path = f"{urlPrefix}/{ownerLogin}/{repoName}/main/source_volume"
+                        self.progressMethod(f"Getting {sourceVolumeURL_path}")
                         sourceVolumeURL_req = requests.get(sourceVolumeURL_path)
                         if sourceVolumeURL_req.status_code == 200:
                             volumeURL = sourceVolumeURL_req.text.strip()
+                            self.progressMethod(f"Getting head of {volumeURL}")
                             head_req = requests.head(volumeURL, allow_redirects=True)
                             if head_req.status_code == 200 and 'Content-Length' in head_req.headers:
                                 repoData['volumeSize'] = int(head_req.headers['Content-Length'])
                             else:
                                 repoData['volumeSize'] = None # Explicitly mark as checked but not found
+                            self.progressMethod(f"Volume size {repoData['volumeSize']}")
 
                     self.repoDataByNameWithOwner[nameWithOwner] = repoData
+                    with open(filePath, "w") as fp:
+                        fp.write(json.dumps(repoData))
+
             except Exception as e:
                 # Use a more specific name here since repo is a dict
                 repoIdentifier = f"{repo.get('owner', {}).get('login', 'N/A')}/{repo.get('name', 'N/A')}"
                 logging.warning(f"Could not process repo {repoIdentifier}: {e}")
+
+        self.progressMethod(f"Finished refreshing caches")
 
 
     def search(self, criteria):

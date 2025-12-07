@@ -1,6 +1,7 @@
 from contextlib import contextmanager
 from typing import Annotated, Optional
 import fnmatch
+import csv
 import git
 import glob
 import json
@@ -326,6 +327,14 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.searchUI.refreshButton.text = "Load Searchable Repository Data"
         self.searchUI.resultsCollapsibleButton.layout().addWidget(self.searchUI.resultsTable)
 
+        self.searchUI.resultsButtonsLayout = qt.QHBoxLayout()
+        self.searchUI.saveSearchResultsButton = qt.QPushButton("Save...")
+        self.searchUI.saveSearchResultsButton.enabled = False
+        self.searchUI.resultsButtonsLayout.addStretch(1)
+        self.searchUI.resultsButtonsLayout.addWidget(self.searchUI.saveSearchResultsButton)
+        self.searchUI.resultsCollapsibleButton.layout().addLayout(self.searchUI.resultsButtonsLayout)
+
+
         # Connections
         self.tabWidget.currentChanged.connect(self.onCurrentTabChanged)
         self.configureUI.repoDirectory.comboBox().connect("currentTextChanged(QString)", self.onRepoDirectoryChanged)
@@ -356,6 +365,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.releaseUI.openReleasePageButton.clicked.connect(self.onOpenReleasePage)
         self.searchUI.resultsTable.doubleClicked.connect(self.onSearchResultsDoubleClicked)
         self.searchUI.refreshButton.clicked.connect(self.onRefreshSearch)
+        self.searchUI.saveSearchResultsButton.clicked.connect(self.onSaveSearchResults)
 
         # set initial visibility of admin tab
         self.onAdminModeChanged(self.configureUI.adminModeCheckBox.checkState())
@@ -812,6 +822,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
     def updateSearchResults(self, results):
         slicer.util.showStatusMessage(f"Updating search results")
         self.searchUI.resultsModel.clear()
+        self.searchUI.saveSearchResultsButton.enabled = False
         self.searchResultsByItem = {}
         headers = ["", "Repository", "Owner", "Species", "Modality", "Size (GB)", "Spacing", "Dimensions"]
         self.searchUI.resultsModel.setHorizontalHeaderLabels(headers)
@@ -913,6 +924,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
 
         self.searchUI.resultsTable.resizeColumnsToContents()
         self.searchUI.resultsTable.setColumnWidth(0, 40) # Screenshot column
+        self.searchUI.saveSearchResultsButton.enabled = len(results) > 0
         slicer.util.showStatusMessage(f"{len(results.keys())} matching repositories")
 
     def onSearchResultsContextMenu(self, point):
@@ -947,6 +959,34 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         repoName, owner = self.repoDataKetToRepoNameAndOwner(repoDataKey)
         fullRepoName = f"{owner}/{repoName}"
         self.previewRepository(fullRepoName)
+
+    def onSaveSearchResults(self):
+        """Saves the current content of the search results table to a CSV file."""
+        fileName = qt.QFileDialog.getSaveFileName(self.parent, "Save Search Results", "MorphoDepotSearchResult.csv", "CSV Files (*.csv)")
+        if not fileName:
+            return
+
+        try:
+            with open(fileName, 'w', newline='', encoding='utf-8') as csvfile:
+                writer = csv.writer(csvfile)
+
+                # Write headers
+                model = self.searchUI.resultsModel
+                headers = []
+                for column in range(model.columnCount()):
+                    headers.append(model.horizontalHeaderItem(column).text())
+                writer.writerow(headers)
+
+                # Write data rows
+                for row in range(model.rowCount()):
+                    rowData = []
+                    for column in range(model.columnCount()):
+                        item = model.item(row, column)
+                        rowData.append(item.text() if item else "")
+                    writer.writerow(rowData)
+            slicer.util.showStatusMessage(f"Search results saved to {fileName}", 3000)
+        except Exception as e:
+            slicer.util.errorDisplay(f"Could not save search results to {fileName}: {e}")
 
     def onMakeRelease(self):
         slicer.util.showStatusMessage("Creating new release...")

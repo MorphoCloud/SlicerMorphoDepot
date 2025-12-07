@@ -285,6 +285,16 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.createUI.accessionForm = MorphoDepotAccessionForm(validationCallback=validationCallback)
         self.createUI.accessionLayout.addWidget(self.createUI.accessionForm.topWidget)
 
+        # Add a developer mode button to fill the form with test data
+        self.createUI.fillFormForTestingButton = qt.QPushButton("Fill Form for Testing")
+        self.createUI.fillFormForTestingButton.toolTip = "Fills the accession form with data for testing. Only visible in developer mode."
+        # The button is added to the layout of the accessionCollapsibleButton, before the form itself.
+        self.createUI.accessionCollapsibleButton.layout().addWidget(self.createUI.fillFormForTestingButton)
+        self.createUI.fillFormForTestingButton.visible = slicer.util.settingsValue("Developer/DeveloperMode", False, converter=slicer.util.toBool)
+
+        # Move the accession form to be after the test button
+        self.createUI.accessionCollapsibleButton.layout().addWidget(self.createUI.accessionForm.topWidget)
+
         # Screenshots for Create tab
         self.createUI.screenshotsCollapsibleButton = ctk.ctkCollapsibleButton()
         self.createUI.screenshotsCollapsibleButton.text = "Screenshots"
@@ -346,6 +356,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.createUI.createRepository.clicked.connect(self.onCreateRepository)
         self.createUI.openRepository.clicked.connect(self.onOpenRepository)
         self.createUI.clearForm.clicked.connect(self.onClearForm)
+        self.createUI.fillFormForTestingButton.clicked.connect(self.onFillFormForTesting)
         self.createUI.reviewScreenshotsButton.clicked.connect(self.onReviewScreenshots)
         self.createUI.takeScreenshotButton.clicked.connect(self.onTakeScreenshot)
         self.annotateUI.issueList.itemDoubleClicked.connect(self.onIssueDoubleClicked)
@@ -464,6 +475,10 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
                     slicer.util.errorDisplay(f"Selected Color table is missing terminology for index {colorIndex}, {colorTable.GetColorName(colorIndex)}")
                     return
 
+        if not self.showConfirmationDialog(sourceVolume, colorTable, accessionData, sourceSegmentation, self.screenshots):
+            self.progressMethod("Repository creation aborted")
+            return
+
         try:
             with slicer.util.tryWithErrorDisplay(_("Trouble creating repository"), waitCursor=True):
                 self.logic.createAccessionRepo(sourceVolume, colorTable, accessionData, sourceSegmentation, self.screenshots)
@@ -480,6 +495,106 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.screenshots = []
         self.updateScreenshotCount()
 
+    def showConfirmationDialog(self, sourceVolume, colorTable, accessionData, sourceSegmentation, screenshots):
+        """Shows a confirmation dialog with a summary of the repository to be created."""
+        dialog = qt.QDialog(slicer.util.mainWindow())
+        dialog.setWindowTitle("Confirm Repository Creation")
+        layout = qt.QVBoxLayout(dialog)
+
+        # Summary Text
+        summaryText = self.getAccessionSummary(sourceVolume, colorTable, accessionData, sourceSegmentation)
+        summaryLabel = qt.QLabel(summaryText)
+        summaryLabel.setWordWrap(True)
+        layout.addWidget(summaryLabel)
+
+        # Screenshots
+        if screenshots:
+            screenshotsGroup = qt.QGroupBox("Screenshots")
+            screenshotsLayout = qt.QHBoxLayout()
+            screenshotsGroup.setLayout(screenshotsLayout)
+            scrollArea = qt.QScrollArea()
+            scrollArea.setWidgetResizable(True)
+            scrollArea.setHorizontalScrollBarPolicy(qt.Qt.ScrollBarAsNeeded)
+            scrollArea.setVerticalScrollBarPolicy(qt.Qt.ScrollBarAlwaysOff)
+            screenshotWidget = qt.QWidget()
+            screenshotLayout = qt.QHBoxLayout()
+            screenshotWidget.setLayout(screenshotLayout)
+
+            for ss in screenshots:
+                pixmap = qt.QPixmap(ss['path'])
+                label = qt.QLabel()
+                label.setPixmap(pixmap.scaledToHeight(128, qt.Qt.SmoothTransformation))
+                if ss['caption']:
+                    label.setToolTip(ss['caption'])
+                screenshotLayout.addWidget(label)
+
+            scrollArea.setWidget(screenshotWidget)
+            screenshotsLayout.addWidget(scrollArea)
+            layout.addWidget(screenshotsGroup)
+
+        # Dialog buttons
+        buttonBox = qt.QDialogButtonBox(qt.QDialogButtonBox.Ok | qt.QDialogButtonBox.Cancel, dialog)
+        buttonBox.accepted.connect(dialog.accept)
+        buttonBox.rejected.connect(dialog.reject)
+        layout.addWidget(buttonBox)
+
+        return dialog.exec_() == qt.QDialog.Accepted
+
+    def getAccessionSummary(self, sourceVolume, colorTable, accessionData, sourceSegmentation):
+        """Generates a summary string from the accession data."""
+        summary = "<b>Review the details of the repository to be created:</b><br><br>"
+
+        def add_detail(label, value):
+            return f"{label}: <i>{value}</i><br>"
+
+        summary += add_detail("GitHub Repository", accessionData['githubRepoName'][1])
+        summary += add_detail("Source Volume", sourceVolume.GetName())
+        summary += add_detail("Color Table", colorTable.GetName())
+        if sourceSegmentation:
+            summary += add_detail("Baseline Segmentation", sourceSegmentation.GetName())
+
+        summary += "<br><b>Specimen Details:</b><br>"
+        summary += add_detail("Species", accessionData['species'][1] if 'species' in accessionData and accessionData['species'][1] else "N/A")
+        summary += add_detail("Modality", accessionData['modality'][1])
+        summary += add_detail("License", accessionData['license'][1])
+        summary += add_detail("Repository Type", accessionData['repoType'][1])
+
+        # Calculate and add physical size and volume
+        try:
+            dims_str = accessionData.get('scanDimensions', '()').strip('()')
+            spacing_str = accessionData.get('scanSpacing', '()').strip('()')
+
+            if dims_str and spacing_str:
+                dims = [int(d.strip()) for d in dims_str.split(',')]
+                spacing = [float(s.strip()) for s in spacing_str.split(',')]
+
+                if len(dims) == 3 and len(spacing) == 3:
+                    phys_dims_mm = [d * s for d, s in zip(dims, spacing)]
+                    volume_mm3 = phys_dims_mm[0] * phys_dims_mm[1] * phys_dims_mm[2]
+
+                    # Format physical dimensions
+                    size_str = f"{phys_dims_mm[0]:.2f} x {phys_dims_mm[1]:.2f} x {phys_dims_mm[2]:.2f} mm"
+
+                    # Format volume
+                    if volume_mm3 < 1000:
+                        volume_str = f"{volume_mm3:.2f} mm³"
+                    elif volume_mm3 < 1_000_000:
+                        volume_cm3 = volume_mm3 / 1000
+                        volume_str = f"{volume_cm3:.2f} cm³ (cc)"
+                    else:
+                        volume_l = volume_mm3 / 1_000_000
+                        volume_str = f"{volume_l:.2f} L"
+
+                    summary += "<br><b>Calculated Physical Size:</b><br>"
+                    summary += add_detail("Dimensions", size_str)
+                    summary += add_detail("Volume", volume_str)
+
+        except (ValueError, IndexError) as e:
+            logging.warning(f"Could not calculate physical size for summary: {e}")
+            # Don't show partial or incorrect calculations
+
+        return summary
+
     def onOpenRepository(self):
         nameWithOwner = self.logic.nameWithOwner("origin")
         repoURL = qt.QUrl(f"https://github.com/{nameWithOwner}")
@@ -489,6 +604,27 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         slicer.util.reloadScriptedModule(self.moduleName)
         self.screenshots = []
         self.updateScreenshotCount()
+
+    def onFillFormForTesting(self):
+        """Fills the accession form with default data for testing."""
+        if not slicer.util.settingsValue("Developer/DeveloperMode", False, converter=slicer.util.toBool):
+            return
+
+        form = self.createUI.accessionForm
+        repoName = f"test-repo-{random.randint(1000, 9999)}"
+        speciesName = "Testudo exempli"
+
+        form.questions["subjectType"].optionButtons["Biological specimen"].click()
+        form.questions["specimenSource"].optionButtons["Non-accessioned"].click()
+        form.questions["species"].answerText.text = speciesName
+        form.questions["biologicalSex"].optionButtons["Unknown"].click()
+        form.questions["developmentalStage"].optionButtons["Adult"].click()
+        form.questions["modality"].optionButtons["Micro CT (or synchrotron)"].click()
+        form.questions["contrastEnhancement"].optionButtons["No"].click()
+        form.questions["imageContents"].optionButtons["Whole specimen"].click()
+        form.questions["githubRepoName"].answerText.text = repoName
+        form.questions["redistributionAcknowledgement"].optionButtons["I have the right to allow redistribution of this data."].click()
+        form.questions["repoType"].optionButtons["Short-term (e.g. repositories for classroom exercises, that are not meant to be maintained for long-term)"].click()
 
     def onTakeScreenshot(self):
         viewport = slicer.app.layoutManager().viewport()

@@ -322,6 +322,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.searchUI.resultsTable.setModel(self.searchUI.resultsModel)
         self.searchUI.resultsTable.setSelectionBehavior(qt.QAbstractItemView.SelectRows)
         self.searchUI.resultsTable.setEditTriggers(qt.QAbstractItemView.NoEditTriggers)
+        self.searchUI.resultsTable.setSortingEnabled(True)
         self.searchUI.refreshButton.text = "Load Searchable Repository Data"
         self.searchUI.resultsCollapsibleButton.layout().addWidget(self.searchUI.resultsTable)
 

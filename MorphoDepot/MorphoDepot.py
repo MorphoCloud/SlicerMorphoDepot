@@ -968,15 +968,12 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.searchUI.resultsModel.clear()
         self.searchUI.saveSearchResultsButton.enabled = False
         self.searchResultsByItem = {}
-        headers = ["", "Repository", "Owner", "Species", "Modality", "Size (GB)", "Spacing", "Dimensions"]
+        headers = ["Repository", "Owner", "Species", "Modality", "Size (GB)", "Spacing", "Dimensions"]
         self.searchUI.resultsModel.setHorizontalHeaderLabels(headers)
         for repoDataKey, repoData in results.items():
             repoName,owner = self.repoDataKetToRepoNameAndOwner(repoDataKey)
             species = repoData.get('species', [None, "N/A"])[1]
             modality = repoData.get('modality', [None, "N/A"])[1]
-
-            screenshotCount = repoData.get('screenshotCount', 0)
-            screenshotItem = qt.QStandardItem()
 
             sizeText = "N/A"
             volumeSize = repoData.get('volumeSize')
@@ -1013,16 +1010,11 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             spacingItem = qt.QStandardItem(spacingText)
             dimensionsItem = qt.QStandardItem(dimensionsText)
 
-            if screenshotCount > 0:
-                screenshotItem.setIcon(qt.QIcon(":/Icons/ViewPoint.png"))
-                screenshotItem.setText(str(screenshotCount))
-                screenshotItem.setToolTip(f"{screenshotCount} screenshots available")
-
             # Store the full data in the first item of the row
             repoItem.setData(repoData, qt.Qt.UserRole)
             repoItem.setData(repoDataKey, qt.Qt.UserRole + 1)
 
-            rowItems = [screenshotItem, repoItem, ownerItem, speciesItem, modalityItem, sizeItem, spacingItem, dimensionsItem]
+            rowItems = [repoItem, ownerItem, speciesItem, modalityItem, sizeItem, spacingItem, dimensionsItem]
 
             # Create a rich HTML tooltip
             tooltipParts = [f"<b>{repoName}</b> by <b>{owner}</b><br><hr>"]
@@ -1033,6 +1025,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             tooltipParts.append(f"<tr><td><b>Spacing:</b></td><td>{spacingText}</td></tr>")
             tooltipParts.append(f"<tr><td><b>Dimensions:</b></td><td>{dimensionsText}</td></tr>")
             tooltipParts.append("</table>")
+            screenshotCount = repoData.get('screenshotCount', 0)
 
             if screenshotCount > 0 and 'screenshotCaptions' in repoData:
                 tooltipParts.append("<hr><b>Screenshots:</b><br>")
@@ -1067,7 +1060,6 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             self.searchUI.resultsModel.appendRow(rowItems)
 
         self.searchUI.resultsTable.resizeColumnsToContents()
-        self.searchUI.resultsTable.setColumnWidth(0, 40) # Screenshot column
         self.searchUI.saveSearchResultsButton.enabled = len(results) > 0
         slicer.util.showStatusMessage(f"{len(results.keys())} matching repositories")
 
@@ -1076,7 +1068,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         if not index.isValid():
             return
 
-        item = self.searchUI.resultsModel.item(index.row(), 1) # repo name is in column 1
+        item = self.searchUI.resultsModel.item(index.row(), 0) # repo name is in column 0
         repoData = item.data(qt.Qt.UserRole)
         repoDataKey = item.data(qt.Qt.UserRole + 1)
         repoName, owner = self.repoDataKetToRepoNameAndOwner(repoDataKey)
@@ -1098,7 +1090,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         if not index.isValid():
             return
 
-        item = self.searchUI.resultsModel.item(index.row(), 1) # repo name is in column 1
+        item = self.searchUI.resultsModel.item(index.row(), 0) # repo name is in column 0
         repoDataKey = item.data(qt.Qt.UserRole + 1)
         repoName, owner = self.repoDataKetToRepoNameAndOwner(repoDataKey)
         fullRepoName = f"{owner}/{repoName}"

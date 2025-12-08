@@ -587,6 +587,14 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
 
                     summary += "<br><b>Calculated Physical Size:</b><br>"
                     summary += add_detail("Dimensions", size_str)
+                    # Format raw dimensions and spacing
+                    raw_dims_str = " x ".join(map(str, dims))
+                    raw_spacing_str = f"{spacing[0]:.3f} x {spacing[1]:.3f} x {spacing[2]:.3f} mm"
+
+                    summary += "<br><b>Image Details:</b><br>"
+                    summary += add_detail("Voxel Dimensions", raw_dims_str)
+                    summary += add_detail("Voxel Spacing", raw_spacing_str)
+                    summary += add_detail("Physical Dimensions", size_str)
                     summary += add_detail("Volume", volume_str)
 
         except (ValueError, IndexError) as e:

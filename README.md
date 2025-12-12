@@ -19,7 +19,7 @@ MorphoDepot consisted of a single module with a tabbed workflow
 * **Create:** Interface to create a MorphoDepot repository from scratch
 * **Release:** Interface to create a release of an existing repository and increment the version (not currently available)
 
-<img src="./Search_MD.png">
+<img src="./Search_MD.png" width="400">
 
 ## Prerequisites for using MorphoDepot
 (First two and fifth steps are not required if you are planning to use [MorphoCloud On Demand Instances](https://morphocloud.org), which we highly encourage you to do so.)

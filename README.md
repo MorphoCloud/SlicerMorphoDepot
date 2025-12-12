@@ -27,7 +27,7 @@ MorphoDepot consisted of a single module with a tabbed workflow
 1. Install [git command line tools for your operating system](https://git-scm.com/downloads). 
 3. Install [GitHub CLI for your operating system.](https://cli.github.com/). 
 4. Register an account on GitHub.com, if you don't already have one. 
-5. On the computer you are planning to use the MorphoDepot, login to GitHub from the **terminal window** of your OS by giving this command: `gh auth login`. Make sure you follow the instructions all the way through, which involves the user pasting and 8-digit code (XXXX-YYYY) into the browser window, and authorizing GitHub. Make sure you have seen **"Congratulations, you're all set!"**, in your browser window (if not, you need to repeat the steps).
+5. On the computer you are planning to use the MorphoDepot, login to GitHub from the **terminal window** by giving this command: `gh auth login`. Make sure you follow the instructions all the way through, which involves the user pasting an 8-digit code (XXXX-YYYY) into the browser window, and authorizing GitHub. Make sure you have seen **"Congratulations, you're all set!"** in your browser window (if not, you need to repeat the steps).
 6. Install and start using the MorphoDepot Slicer extension. 
 
 ## MorphoDepot Personas

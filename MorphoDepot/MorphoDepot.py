@@ -31,7 +31,6 @@ from slicer.parameterNodeWrapper import (
     WithinRange,
 )
 
-
 #
 # MorphoDepot
 #
@@ -125,6 +124,10 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.testingMode = False
         self.screenshots = [] # list of dicts with 'path' and 'caption'
 
+        # development config:
+        ## disable releaseUI for now, but keep as placeholder for future development
+        self.includeReleaseUI = False
+
     def progressMethod(self, message=None):
         message = message if message else self
         logging.info(message)
@@ -170,7 +173,8 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
 
         uiWidget = slicer.util.loadUI(os.path.normpath(self.resourcePath("UI/MorphoDepotRelease.ui")))
         uiWidget.setMRMLScene(slicer.mrmlScene)
-        self.tabWidget.addTab(uiWidget, "Release")
+        if self.includeReleaseUI:
+            self.tabWidget.addTab(uiWidget, "Release")
         self.releaseUI = slicer.util.childWidgetVariables(uiWidget)
 
         self.adminTab = qt.QScrollArea()

@@ -83,14 +83,18 @@ class EnableModuleMixin:
         """Module is only enabled if all of the dependencies are available,
         possibly after the user has accepted installation and it worked as expected
         """
+        # check Slicer version
         if not self.logic.slicerVersionCheck():
             msg = "This version of Slicer is not supported. Use a newer Preview or a Release after 5.8."
             slicer.util.messageBox(msg)
             return False
+
+        # check Python dependecies
         if not self.logic.checkPythonDependencies():
             if not self.offerPythonInstallation():
                 return False
-        moduleEnabled = True
+
+        # check git dependencies
         if not self.logic.checkGitDependencies():
             msgBox = qt.QMessageBox()
             msgBox.setWindowTitle("MorphoDepot Dependencies")
@@ -105,7 +109,20 @@ class EnableModuleMixin:
             if msgBox.clickedButton() == openDocsButton:
                 qt.QDesktopServices.openUrl(qt.QUrl("https://github.com/MorphoCloud/SlicerMorphoDepot?tab=readme-ov-file#prerequisites-for-morphodepot"))
             return False
-        return moduleEnabled
+
+        # check local directory
+        repoDirectory = os.path.normpath(slicer.util.settingsValue("MorphoDepot/repoDirectory", "") or "")
+        if not os.path.exists(repoDirectory):
+            msgBox = qt.QMessageBox()
+            msgBox.setWindowTitle("MorphoDepot Repository Directory")
+            msgBox.setText("The local directory must exist.")
+            informativeText = "Go into the configure tab and set the local repository directory.\n"
+            msgBox.setInformativeText(informativeText)
+            msgBox.setIcon(qt.QMessageBox.Warning)
+            msgBox.exec_()
+            return False
+
+        return True
 
 
 class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, EnableModuleMixin):
@@ -145,7 +162,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
 
         uiWidget = slicer.util.loadUI(os.path.normpath(self.resourcePath("UI/MorphoDepotConfigure.ui")))
         uiWidget.setMRMLScene(slicer.mrmlScene)
-        self.tabWidget.addTab(uiWidget, "Configure")
+        self.configureTabIndex = self.tabWidget.addTab(uiWidget, "Configure")
         self.configureUI = slicer.util.childWidgetVariables(uiWidget)
 
         uiWidget = slicer.util.loadUI(os.path.normpath(self.resourcePath("UI/MorphoDepotSearch.ui")))
@@ -386,17 +403,13 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.removeObservers()
 
     def enter(self):
+        """Disable everything except the configUI"""
         moduleEnabled = self.checkModuleEnabled()
-        self.createUI.inputsCollapsibleButton.enabled = moduleEnabled
-        self.createUI.accessionCollapsibleButton.enabled = moduleEnabled
-        self.annotateUI.issuesCollapsibleButton.enabled = moduleEnabled
-        self.annotateUI.prCollapsibleButton.enabled = moduleEnabled
-        self.annotateUI.refreshButton.enabled = moduleEnabled
-        self.reviewUI.prsCollapsibleButton.enabled = moduleEnabled
-        self.reviewUI.refreshButton.enabled = moduleEnabled
-        self.reviewUI.prCollapsibleButton.enabled = self.logic.issuePR(role="reviewer")
-        self.releaseUI.reposCollapsibleButton.enabled = moduleEnabled
-        self.releaseUI.refreshButton.enabled = moduleEnabled
+        for tabIndex in range(self.tabWidget.count):
+            if tabIndex != self.configureTabIndex:
+                self.tabWidget.setTabEnabled(tabIndex, moduleEnabled)
+            else:
+                self.tabWidget.setTabEnabled(tabIndex, True)
 
     def onCurrentTabChanged(self,index):
         qt.QSettings().setValue("MorphoDepot/tabIndex", index)

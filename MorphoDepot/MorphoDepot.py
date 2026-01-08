@@ -1158,6 +1158,9 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             with slicer.util.tryWithErrorDisplay("Failed to load repository", waitCursor=True):
                 self.logic.loadRepoForPreview(repoNameWithOwner)
             slicer.util.showStatusMessage(f"Repository {repoNameWithOwner} loaded for preview.")
+            slicer.util.messageBox("To contribute segmentations, right click on the search results row to open the repository web page and add an issue for your request.",
+                                   windowTitle = "You are in Preview mode",
+                                   dontShowAgainSettingsKey = "MorphoDepot/DontShowPreviewNotice")
 
 class MorphoDepotAccessionForm():
     """Customized interface to collect data about MorphoDepot accessions"""

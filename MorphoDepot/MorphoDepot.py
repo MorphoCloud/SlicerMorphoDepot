@@ -2195,6 +2195,11 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                 self.segmentationNode.CreateDefaultDisplayNodes()
                 self.segmentationNode.SetReferenceImageGeometryParameterFromVolumeNode(volumeNode)
                 self.segmentationNode.SetName(branchName)
+                if "baseline" in segmentationNodesByName.keys():
+                    baselineSegmentation = segmentationNodesByName["baseline"].GetSegmentation()
+                    newSegmentation = self.segmentationNode.GetSegmentation()
+                    for segmentID in baselineSegmentation.GetSegmentIDs():
+                        newSegmentation.CopySegmentFromSegmentation(baselineSegmentation, segmentID)
 
             editorWidget.parameterSetNode.SetAndObserveSegmentationNode(self.segmentationNode)
             editorWidget.parameterSetNode.SetAndObserveSourceVolumeNode(volumeNode)
@@ -2480,7 +2485,7 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
             "source_volume_checksum",
         ]
         if sourceSegmentation:
-            segmentationName = "baseline" # initial segmentation
+            segmentationName = "baseline" # keyword used to detect segmentation to import when startin new issue
             slicer.util.saveNode(sourceSegmentation, os.path.join(repoDir, segmentationName) + ".seg.nrrd")
             repoFileNames.append(f"{segmentationName}.seg.nrrd")
 

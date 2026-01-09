@@ -142,8 +142,9 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.screenshots = [] # list of dicts with 'path' and 'caption'
 
         # development config:
-        ## disable releaseUI for now, but keep as placeholder for future development
+        ## disable releaseUI and adminUI for now, but keep as placeholder for future development
         self.includeReleaseUI = False
+        self.includeAdminUI = False
 
     def progressMethod(self, message=None):
         message = message if message else self
@@ -195,7 +196,8 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.releaseUI = slicer.util.childWidgetVariables(uiWidget)
 
         self.adminTab = qt.QScrollArea()
-        self.tabWidget.addTab(self.adminTab, "Admin")
+        if self.includeAdminUI:
+            self.tabWidget.addTab(self.adminTab, "Admin")
         self.adminTabIndex = self.tabWidget.indexOf(self.adminTab)
         self.adminUI = {} # for future use
 
@@ -222,6 +224,12 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.configureUI.ghPath.toolTip = "Restart Slicer after setting new path"
         self.annotateUI.forkManagementCollapsibleButton.enabled = False
 
+        # Add reload button
+        self.configureUI.reloadButton = qt.QPushButton("Apply Changes")
+        self.configureUI.reloadButton.toolTip = "Reload the MorphoDepot module to apply changes."
+        self.configureUI.configureCollapsibleButton.layout().addWidget(self.configureUI.reloadButton)
+
+
         # Add git user name and email fields
         self.configureUI.gitConfigLayout = qt.QFormLayout()
         self.configureUI.userNameLineEdit = qt.QLineEdit()
@@ -242,9 +250,10 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.updateGitConfigInfo()
 
         self.configureUI.adminModeCheckBox = qt.QCheckBox("Administrator mode")
-        self.configureUI.configureCollapsibleButton.layout().addWidget(self.configureUI.adminModeCheckBox)
         adminMode = slicer.util.settingsValue("MorphoDepot/adminMode", False, converter=slicer.util.toBool)
         self.configureUI.adminModeCheckBox.checked = adminMode
+        if self.includeAdminUI:
+            self.configureUI.configureCollapsibleButton.layout().addWidget(self.configureUI.adminModeCheckBox)
 
         # Testing
         self.configureUI.testingCollapsibleButton = ctk.ctkCollapsibleButton()
@@ -374,6 +383,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.configureUI.userNameLineEdit.textChanged.connect(self.onUserNameChanged)
         self.configureUI.userEmailLineEdit.textChanged.connect(self.onUserEmailChanged)
         self.configureUI.ghPath.comboBox().connect("currentTextChanged(QString)", self.onGhPathChanged)
+        self.configureUI.reloadButton.clicked.connect(self.onReload)
         self.createUI.createRepository.clicked.connect(self.onCreateRepository)
         self.createUI.openRepository.clicked.connect(self.onOpenRepository)
         self.createUI.clearForm.clicked.connect(self.onClearForm)

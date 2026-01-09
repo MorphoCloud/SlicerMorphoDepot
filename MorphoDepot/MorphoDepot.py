@@ -996,9 +996,9 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.updateSearchResults(results)
 
     def repoDataKetToRepoNameAndOwner(self, repoDataKey):
-        nameWithOwnerSplit = repoDataKey.split('-')
-        repoName = "-".join(nameWithOwnerSplit[:-1])
-        owner = nameWithOwnerSplit[-1]
+        nameWithOwnerSplit = repoDataKey.split('^')
+        repoName = nameWithOwnerSplit[0]
+        owner = nameWithOwnerSplit[1]
         return repoName,owner
 
     def updateSearchResults(self, results):
@@ -2577,7 +2577,7 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
             try:
                 repoName = repo['name']
                 ownerLogin = repo['owner']['login']
-                nameWithOwner = f"{repoName}-{ownerLogin}"
+                nameWithOwner = f"{repoName}^{ownerLogin}"
                 filePath = f"{searchDirectory}/{nameWithOwner}-repoData.json"
 
                 self.progressMethod(f"Refreshing {nameWithOwner}")

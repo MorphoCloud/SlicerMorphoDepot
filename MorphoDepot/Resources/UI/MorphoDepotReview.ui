@@ -31,6 +31,16 @@
        </widget>
       </item>
       <item>
+       <widget class="QCheckBox" name="hideDraftsCheckBox">
+        <property name="text">
+         <string>Hide drafts</string>
+        </property>
+        <property name="checked">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
        <widget class="QListWidget" name="prList"/>
       </item>
      </layout>

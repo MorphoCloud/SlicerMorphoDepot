@@ -137,6 +137,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.issuesByItem = {}
         self.prsByItem = {}
         self.segmentNamesByID = {}
+        self.hidePRDrafts = True
         self.searchResultsByItem = {}
         self.testingMode = False
         self.screenshots = [] # list of dicts with 'path' and 'caption'
@@ -399,6 +400,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.annotateUI.openPRPageButton.clicked.connect(self.onOpenPRPageButtonClicked)
         self.reviewUI.refreshButton.connect("clicked(bool)", self.updateReviewPRList)
         self.reviewUI.prList.itemDoubleClicked.connect(self.onPRDoubleClicked)
+        self.reviewUI.hideDraftsCheckBox.stateChanged.connect(self.onHideDraftsChanged)
         self.reviewUI.requestChangesButton.clicked.connect(self.onRequestChanges)
         self.reviewUI.approveButton.clicked.connect(self.onApprove)
         self.releaseUI.refreshButton.clicked.connect(self.onRefreshReleaseTab)
@@ -411,6 +413,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
 
         # set initial visibility of admin tab
         self.onAdminModeChanged(self.configureUI.adminModeCheckBox.checkState())
+        self.reviewUI.hideDraftsCheckBox.checked = self.hidePRDrafts
 
     def cleanup(self) -> None:
         """Called when the application closes and the module widget is destroyed."""
@@ -882,10 +885,14 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             self.reviewUI.prList.clear()
             self.prsByItem = {}
             prList = self.logic.prList(role="reviewer")
+            prCount = 0
             for pr in prList:
+                if self.hidePRDrafts and pr['isDraft']:
+                    continue
                 prStatus = 'draft' if pr['isDraft'] else 'ready for review'
                 prTitle = f"{pr['title']} {pr['issueTitles']} {pr['repository']['nameWithOwner']}: {prStatus}"
                 item = qt.QListWidgetItem(prTitle)
+                prCount += 1
                 self.prsByItem[item] = pr
                 self.reviewUI.prList.addItem(item)
             slicer.util.showStatusMessage(f"{len(prList)} prs")
@@ -903,6 +910,10 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
                     slicer.util.showStatusMessage(f"Start reviewing {item.text()}")
                 else:
                     slicer.util.showStatusMessage(f"PR load failed")
+
+    def onHideDraftsChanged(self, state):
+        self.hidePRDrafts = (state == qt.Qt.Checked)
+        self.updateReviewPRList()
 
     def onRequestChanges(self):
         with slicer.util.tryWithErrorDisplay("Failed to request changes", waitCursor=True):

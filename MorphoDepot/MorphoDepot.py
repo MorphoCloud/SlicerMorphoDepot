@@ -1192,10 +1192,14 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             slicer.mrmlScene.Clear()
             with slicer.util.tryWithErrorDisplay("Failed to load repository", waitCursor=True):
                 self.logic.loadRepoForPreview(repoNameWithOwner)
-            slicer.util.showStatusMessage(f"Repository {repoNameWithOwner} loaded for preview.")
-            slicer.util.messageBox("To contribute segmentations, right click on the search results row to open the repository web page and add an issue for your request.",
-                                   windowTitle = "You are in Preview mode",
-                                   dontShowAgainSettingsKey = "MorphoDepot/DontShowPreviewNotice")
+                repoDir = self.logic.localRepo.working_dir
+                if os.path.exists(repoDir):
+                    shutil.rmtree(repoDir)
+                self.logic.localRepo = None
+                slicer.util.showStatusMessage(f"Repository {repoNameWithOwner} loaded for preview.")
+                slicer.util.messageBox("To contribute segmentations, right click on the search results row to open the repository web page and add an issue for your request.  The currently loaded data is not saved by default.",
+                                       windowTitle = "You are in Preview mode",
+                                       dontShowAgainSettingsKey = "MorphoDepot/DontShowPreviewNotice")
 
 class MorphoDepotAccessionForm():
     """Customized interface to collect data about MorphoDepot accessions"""

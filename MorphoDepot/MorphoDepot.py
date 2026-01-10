@@ -1,7 +1,8 @@
 from contextlib import contextmanager
 from typing import Annotated, Optional
-import fnmatch
 import csv
+import datetime
+import fnmatch
 import git
 import glob
 import json
@@ -18,9 +19,9 @@ import subprocess
 import sys
 import time
 import traceback
-import qt
 
 import ctk
+import qt
 import slicer
 from slicer.i18n import tr as _
 from slicer.i18n import translate
@@ -1020,12 +1021,33 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.searchUI.resultsModel.clear()
         self.searchUI.saveSearchResultsButton.enabled = False
         self.searchResultsByItem = {}
-        headers = ["Size (GB)", "Repository", "Owner", "Species", "Modality", "Spacing", "Dimensions"]
+        headers = ["Size (GB)", "Repository", "Owner", "Species", "Modality", "Active", "Spacing", "Dimensions"]
         self.searchUI.resultsModel.setHorizontalHeaderLabels(headers)
         for repoDataKey, repoData in results.items():
             repoName,owner = self.repoDataKetToRepoNameAndOwner(repoDataKey)
             species = repoData.get('species', [None, "N/A"])[1]
             modality = repoData.get('modality', [None, "N/A"])[1]
+
+            activeText = "N/A"
+            pushedAtStr = repoData.get('pushedAt')
+            if pushedAtStr:
+                try:
+                    pushedAtDate = datetime.date.fromisoformat(pushedAtStr.split("T")[0])
+                    today = datetime.date.today()
+                    delta = today - pushedAtDate
+                    days = delta.days
+                    if days < 1:
+                        activeText = "Today"
+                    elif days < 30:
+                        activeText = f"{days} day{'s' if days > 1 else ''} ago"
+                    elif days < 365:
+                        months = days // 30
+                        activeText = f"{months} month{'s' if months > 1 else ''} ago"
+                    else:
+                        years = days // 365
+                        activeText = f"{years} year{'s' if years > 1 else ''} ago"
+                except ValueError:
+                    activeText = "Invalid Date"
 
             sizeText = "N/A"
             volumeSize = repoData.get('volumeSize')
@@ -1059,18 +1081,19 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             speciesItem = qt.QStandardItem(species)
             modalityItem = qt.QStandardItem(modality)
             sizeItem = qt.QStandardItem(sizeText)
+            activeItem = qt.QStandardItem(activeText)
             spacingItem = qt.QStandardItem(spacingText)
             dimensionsItem = qt.QStandardItem(dimensionsText)
 
             # Store the full data in the first item of the row
             sizeItem.setData(repoData, qt.Qt.UserRole)
             sizeItem.setData(repoDataKey, qt.Qt.UserRole + 1)
-
-            rowItems = [sizeItem, repoItem, ownerItem, speciesItem, modalityItem, spacingItem, dimensionsItem]
+            rowItems = [sizeItem, repoItem, ownerItem, speciesItem, modalityItem, activeItem, spacingItem, dimensionsItem]
 
             # Create a rich HTML tooltip
             tooltipParts = [f"<b>{repoName}</b> by <b>{owner}</b><br><hr>"]
             tooltipParts.append("<table>")
+            tooltipParts.append(f"<tr><td><b>Last Active:</b></td><td>{activeText}</td></tr>")
             tooltipParts.append(f"<tr><td><b>Species:</b></td><td>{species}</td></tr>")
             tooltipParts.append(f"<tr><td><b>Size (GB):</b></td><td>{sizeText}</td></tr>")
             tooltipParts.append(f"<tr><td><b>Modality:</b></td><td>{modality}</td></tr>")
@@ -2017,6 +2040,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                       login
                     }
                     viewerPermission
+                    pushedAt
                   }
                 }
                 pageInfo { endCursor hasNextPage }
@@ -2615,6 +2639,7 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
                         self.progressMethod(f"Failed to load {accessionURL}")
 
                 if repoData:
+                    repoData['pushedAt'] = repo['pushedAt']
                     # Also fetch screenshot captions if they exist
                     if 'screenshotCount' not in repoData:
                         captionsURL = f"{urlPrefix}/{ownerLogin}/{repoName}/main/screenshots/captions.json"

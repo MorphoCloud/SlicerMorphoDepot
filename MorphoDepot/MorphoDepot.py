@@ -502,8 +502,22 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         if accessionData["repoType"][1] == "Archival (intended for long-term maintenance)":
             for colorIndex in range(1, colorTable.GetNumberOfColors()):
                 if colorTable.GetTerminologyAsString(colorIndex) == "~^^~^^~^^~~^^~^^~":
-                    slicer.util.errorDisplay(f"Selected Color table is missing terminology for index {colorIndex}, {colorTable.GetColorName(colorIndex)}")
+                    slicer.util.errorDisplay(f"Selected Color table is missing terminology for index {colorIndex}, {colorTable.GetColorName(colorIndex)}", windowTitle="Missing Terminology")
                     return
+        else:
+            validTerminology = True
+            for colorIndex in range(1, colorTable.GetNumberOfColors()):
+                if colorTable.GetTerminologyAsString(colorIndex) == "~^^~^^~^^~~^^~^^~":
+                    validTerminology = False
+                    break
+            if not validTerminology:
+                ok = slicer.util.confirmOkCancelDisplay("Color table does not have complete terminology.  Click OK to fill with defaults or Cancel to fill manually", windowTitle="Missing Terminology")
+                if ok:
+                    for colorIndex in range(1, colorTable.GetNumberOfColors()):
+                        colorTable.SetTerminology(colorIndex, "SCT", "85756007", "Tissue", "SCT", "85756007", "Tissue")
+                else:
+                    return
+
 
         if not self.showConfirmationDialog(sourceVolume, colorTable, accessionData, sourceSegmentation, self.screenshots):
             self.progressMethod("Repository creation aborted")

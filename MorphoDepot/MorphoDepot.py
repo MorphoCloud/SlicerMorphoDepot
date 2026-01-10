@@ -1020,7 +1020,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.searchUI.resultsModel.clear()
         self.searchUI.saveSearchResultsButton.enabled = False
         self.searchResultsByItem = {}
-        headers = ["Repository", "Owner", "Species", "Modality", "Size (GB)", "Spacing", "Dimensions"]
+        headers = ["Size (GB)", "Repository", "Owner", "Species", "Modality", "Spacing", "Dimensions"]
         self.searchUI.resultsModel.setHorizontalHeaderLabels(headers)
         for repoDataKey, repoData in results.items():
             repoName,owner = self.repoDataKetToRepoNameAndOwner(repoDataKey)
@@ -1063,10 +1063,10 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             dimensionsItem = qt.QStandardItem(dimensionsText)
 
             # Store the full data in the first item of the row
-            repoItem.setData(repoData, qt.Qt.UserRole)
-            repoItem.setData(repoDataKey, qt.Qt.UserRole + 1)
+            sizeItem.setData(repoData, qt.Qt.UserRole)
+            sizeItem.setData(repoDataKey, qt.Qt.UserRole + 1)
 
-            rowItems = [repoItem, ownerItem, speciesItem, modalityItem, sizeItem, spacingItem, dimensionsItem]
+            rowItems = [sizeItem, repoItem, ownerItem, speciesItem, modalityItem, spacingItem, dimensionsItem]
 
             # Create a rich HTML tooltip
             tooltipParts = [f"<b>{repoName}</b> by <b>{owner}</b><br><hr>"]
@@ -1120,7 +1120,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         if not index.isValid():
             return
 
-        item = self.searchUI.resultsModel.item(index.row(), 0) # repo name is in column 0
+        item = self.searchUI.resultsModel.item(index.row(), 0) # data is in column 0
         repoData = item.data(qt.Qt.UserRole)
         repoDataKey = item.data(qt.Qt.UserRole + 1)
         repoName, owner = self.repoDataKetToRepoNameAndOwner(repoDataKey)
@@ -1142,7 +1142,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         if not index.isValid():
             return
 
-        item = self.searchUI.resultsModel.item(index.row(), 0) # repo name is in column 0
+        item = self.searchUI.resultsModel.item(index.row(), 0) # data is in column 0
         repoDataKey = item.data(qt.Qt.UserRole + 1)
         repoName, owner = self.repoDataKetToRepoNameAndOwner(repoDataKey)
         fullRepoName = f"{owner}/{repoName}"

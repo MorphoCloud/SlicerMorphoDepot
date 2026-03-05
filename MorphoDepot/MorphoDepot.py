@@ -399,7 +399,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.annotateUI.reviewButton.clicked.connect(self.onRequestReview)
         self.annotateUI.refreshButton.connect("clicked(bool)", self.onRefresh)
         self.annotateUI.openPRPageButton.clicked.connect(self.onOpenPRPageButtonClicked)
-        self.reviewUI.refreshButton.connect("clicked(bool)", self.updateReviewPRList)
+        self.reviewUI.refreshButton.connect("clicked(bool)", self.onReviewRefresh)
         self.reviewUI.prList.itemDoubleClicked.connect(self.onPRDoubleClicked)
         self.reviewUI.hideDraftsCheckBox.stateChanged.connect(self.onHideDraftsChanged)
         self.reviewUI.requestChangesButton.clicked.connect(self.onRequestChanges)
@@ -703,6 +703,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
     # Annotate
     def onRefresh(self):
         with slicer.util.tryWithErrorDisplay("Failed to refresh from GitHub", waitCursor=True):
+            self.logic.ghTopicClearCache()
             self.annotateUI.issueList.clear()
             self.annotateUI.prList.clear()
             self.updateIssueList()
@@ -894,6 +895,11 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.enter()
 
     # Review
+    def onReviewRefresh(self):
+        with slicer.util.tryWithErrorDisplay("Failed to update PR list", waitCursor=True):
+            self.logic.ghTopicClearCache()
+            self.updateReviewPRList()
+
     def updateReviewPRList(self):
         with slicer.util.tryWithErrorDisplay("Failed to update PR list", waitCursor=True):
             slicer.util.showStatusMessage(f"Updating PRs")

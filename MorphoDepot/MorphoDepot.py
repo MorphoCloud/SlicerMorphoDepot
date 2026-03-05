@@ -2249,7 +2249,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             name = os.path.split(segmentationPath)[1].split(".")[0]
             segmentationNodesByName[name] = slicer.util.loadSegmentation(segmentationPath)
 
-        if configuration == "segment":
+        if configuration in ("segment", "reviewer"):
             for segmentationNode in segmentationNodesByName.values():
                 segmentationNode.GetDisplayNode().SetVisibility(False)
 

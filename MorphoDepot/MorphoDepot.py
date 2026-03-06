@@ -111,12 +111,12 @@ class EnableModuleMixin:
             return False
 
         # check local directory
-        repoDirectory = os.path.normpath(slicer.util.settingsValue("MorphoDepot/repoDirectory", "") or "")
+        repoDirectory = self.logic.localRepositoryDirectory()
         if not os.path.exists(repoDirectory):
             msgBox = qt.QMessageBox()
             msgBox.setWindowTitle("MorphoDepot Repository Directory")
-            msgBox.setText("The local directory must exist.")
-            informativeText = "Go into the configure tab and set the local repository directory.\n"
+            msgBox.setText("The local directory must exist and be writable.")
+            informativeText = f"Could not create or access the directory:\n{repoDirectory}\n\nGo into the configure tab and set a valid local repository directory."
             msgBox.setInformativeText(informativeText)
             msgBox.setIcon(qt.QMessageBox.Warning)
             msgBox.exec_()
@@ -1856,6 +1856,15 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             defaultRepoDir = os.path.join(defaultScenePath, "MorphoDepot")
             self.setLocalRepositoryDirectory(defaultRepoDir)
             repoDirectory = defaultRepoDir
+
+        if repoDirectory and not os.path.exists(repoDirectory):
+            message = f"The repository directory does not exist:\n\n{repoDirectory}\n\nCreate it now?"
+            if slicer.util.confirmOkCancelDisplay(message, windowTitle="Create Directory"):
+                try:
+                    os.makedirs(repoDirectory)
+                except OSError as e:
+                    logging.error(f"Could not create repository directory {repoDirectory}: {e}")
+
         return repoDirectory
 
     def setLocalRepositoryDirectory(self, repoDir):

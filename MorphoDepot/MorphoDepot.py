@@ -2600,7 +2600,9 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
         self.gh(f"repo edit {repoNameWithOwner} --add-topic morphodepot --add-topic md-{speciesTopicString}")
 
         # subscribe to all notifications for the new repository
-        self.gh(f"repo watch {repoNameWithOwner}")
+        # gh repo watch was removed in newer gh CLI versions; use the API directly
+        owner, repoName = repoNameWithOwner.split("/", 1)
+        self.gh(f"api --method PUT /repos/{owner}/{repoName}/subscription --field subscribed=true --field ignored=false")
 
         # create initial release and add asset
         # use list for command to handle spaces in notes

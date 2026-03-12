@@ -528,11 +528,11 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             with slicer.util.tryWithErrorDisplay(_("Trouble creating repository"), waitCursor=True):
                 self.logic.createAccessionRepo(sourceVolume, colorTable, accessionData, sourceSegmentation, self.screenshots)
                 # Collect contact info — best-effort, runs in background thread so it never blocks the UI
-                CONTACT_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdXe6Hc_WEOwJKBfTS4bvJYFeDJtrVluOKq63-RF3hlDzJ4Mw/formResponse"
-                CONTACT_FORM_ENTRY_EMAIL       = "entry.230949841"  # Email Address
-                CONTACT_FORM_ENTRY_GH_USER     = "entry.607952705"  # GitHub Username
-                CONTACT_FORM_ENTRY_REPO_NAME   = "entry.1010584433" # Repository Name
-                CONTACT_FORM_ENTRY_REPO_TYPE   = "entry.254738972"  # Repository Type
+                CONTACT_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLScqzoTAIklSg2Dc4sQHMw-_J8PPQUOSBqFrpLnWpLS-tvvVHQ/formResponse"
+                CONTACT_FORM_ENTRY_EMAIL       = "entry.2057466047"  # Email Address
+                CONTACT_FORM_ENTRY_GH_USER     = "entry.1912463514"  # GitHub Username
+                CONTACT_FORM_ENTRY_REPO_NAME   = "entry.683034902"   # Repository Name
+                CONTACT_FORM_ENTRY_REPO_TYPE   = "entry.156019116"   # Repository Type
                 try:
                     ghUser = self.logic.gh("api user --jq .login").strip()
                 except Exception:

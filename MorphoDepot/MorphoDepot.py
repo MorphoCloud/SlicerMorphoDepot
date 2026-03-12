@@ -527,22 +527,31 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         try:
             with slicer.util.tryWithErrorDisplay(_("Trouble creating repository"), waitCursor=True):
                 self.logic.createAccessionRepo(sourceVolume, colorTable, accessionData, sourceSegmentation, self.screenshots)
+                # Collect contact info — best-effort, runs in background thread so it never blocks the UI
+                CONTACT_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdXe6Hc_WEOwJKBfTS4bvJYFeDJtrVluOKq63-RF3hlDzJ4Mw/formResponse"
+                CONTACT_FORM_ENTRY_EMAIL       = "entry.230949841"  # Email Address
+                CONTACT_FORM_ENTRY_GH_USER     = "entry.607952705"  # GitHub Username
+                CONTACT_FORM_ENTRY_REPO_NAME   = "entry.1010584433" # Repository Name
+                CONTACT_FORM_ENTRY_REPO_TYPE   = "entry.254738972"  # Repository Type
                 try:
-                    ghUser = self.logic.whoami()
+                    ghUser = self.logic.gh("api user --jq .login").strip()
                 except Exception:
                     ghUser = ""
-                try:
-                    formResponseUrl = "https://docs.google.com/forms/d/e/1FAIpQLSdXe6Hc_WEOwJKBfTS4bvJYFeDJtrVluOKq63-RF3hlDzJ4Mw/formResponse"
-                    repoTypeFull = accessionData['repoType'][1]
-                    repoTypeShort = "Archival" if repoTypeFull.startswith("Archival") else "Short-term"
-                    requests.post(formResponseUrl, data={
-                        "entry.230949841": self.createUI.accessionForm.contactEmailQuestion.answer(),
-                        "entry.607952705": ghUser,
-                        "entry.1010584433": accessionData['githubRepoName'][1],
-                        "entry.254738972": repoTypeShort,
-                    }, timeout=10)
-                except Exception:
-                    pass  # non-critical, do not block repo creation on form submission failure
+                repoTypeFull = accessionData['repoType'][1]
+                repoTypeShort = "Archival" if repoTypeFull.startswith("Archival") else "Short-term"
+                formData = {
+                    CONTACT_FORM_ENTRY_EMAIL:     self.createUI.accessionForm.contactEmailQuestion.answer().strip(),
+                    CONTACT_FORM_ENTRY_GH_USER:   ghUser,
+                    CONTACT_FORM_ENTRY_REPO_NAME: accessionData['githubRepoName'][1],
+                    CONTACT_FORM_ENTRY_REPO_TYPE: repoTypeShort,
+                }
+                import threading
+                def _submitContactForm(url, data):
+                    try:
+                        requests.post(url, data=data, timeout=5)
+                    except Exception:
+                        pass  # non-critical
+                threading.Thread(target=_submitContactForm, args=(CONTACT_FORM_URL, formData), daemon=True).start()
         except Exception as e:
             slicer.util.showStatusMessage(f"Cleaning up...")
             repoName = accessionData['githubRepoName'][1]
@@ -1504,7 +1513,7 @@ class MorphoDepotAccessionForm():
         self.questions["repoType"] = FormRadioQuestion(q, a, self.validateForm)
         layout.addWidget(self.questions["repoType"].questionBox)
 
-        emailTooltip = "Your email will be added to MorphoDepot contact list for you to get notified with new features and updates"
+        emailTooltip = "Your email will be added to the MorphoDepot contact list so you can be notified about new features and updates"
         self.contactEmailQuestion = FormTextQuestion("What is your email address?", self.validateForm)
         self.contactEmailQuestion.questionBox.toolTip = emailTooltip
         layout.addWidget(self.contactEmailQuestion.questionBox)
@@ -1593,9 +1602,10 @@ class MorphoDepotAccessionForm():
         repoNameRegex = r"^(?:([a-zA-Z\d]+(?:-[a-zA-Z\d]+)*)/)?([\w.-]+)$"
         valid = valid and (re.match(repoNameRegex, self.questions["githubRepoName"].answer()) != None)
         emailRegex = r'^[^@\s]+@[^@\s]+\.[^@\s]+$'
-        email = self.contactEmailQuestion.answer()
+        email = self.contactEmailQuestion.answer().strip()
         valid = valid and bool(re.match(emailRegex, email))
-        valid = valid and (email == self.contactEmailConfirmQuestion.answer())
+        valid = valid and (email == self.contactEmailConfirmQuestion.answer().strip().lower() or
+                           email.lower() == self.contactEmailConfirmQuestion.answer().strip().lower())
         self.validationCallback(valid)
 
     def accessionData(self):

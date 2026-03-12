@@ -527,6 +527,22 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         try:
             with slicer.util.tryWithErrorDisplay(_("Trouble creating repository"), waitCursor=True):
                 self.logic.createAccessionRepo(sourceVolume, colorTable, accessionData, sourceSegmentation, self.screenshots)
+                try:
+                    ghUser = self.logic.whoami()
+                except Exception:
+                    ghUser = ""
+                try:
+                    formResponseUrl = "https://docs.google.com/forms/d/e/1FAIpQLSdXe6Hc_WEOwJKBfTS4bvJYFeDJtrVluOKq63-RF3hlDzJ4Mw/formResponse"
+                    repoTypeFull = accessionData['repoType'][1]
+                    repoTypeShort = "Archival" if repoTypeFull.startswith("Archival") else "Short-term"
+                    requests.post(formResponseUrl, data={
+                        "entry.230949841": self.createUI.accessionForm.contactEmailQuestion.answer(),
+                        "entry.607952705": ghUser,
+                        "entry.1010584433": accessionData['githubRepoName'][1],
+                        "entry.254738972": repoTypeShort,
+                    }, timeout=10)
+                except Exception:
+                    pass  # non-critical, do not block repo creation on form submission failure
         except Exception as e:
             slicer.util.showStatusMessage(f"Cleaning up...")
             repoName = accessionData['githubRepoName'][1]
@@ -678,6 +694,8 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         form.questions["githubRepoName"].answerText.text = repoName
         form.questions["redistributionAcknowledgement"].optionButtons["I have the right to allow redistribution of this data."].click()
         form.questions["repoType"].optionButtons["Short-term (e.g. repositories for classroom exercises, that are not meant to be maintained for long-term)"].click()
+        form.contactEmailQuestion.answerText.text = "test@example.com"
+        form.contactEmailConfirmQuestion.answerText.text = "test@example.com"
 
     def onTakeScreenshot(self):
         viewport = slicer.app.layoutManager().viewport()
@@ -1486,6 +1504,14 @@ class MorphoDepotAccessionForm():
         self.questions["repoType"] = FormRadioQuestion(q, a, self.validateForm)
         layout.addWidget(self.questions["repoType"].questionBox)
 
+        emailTooltip = "Your email will be added to MorphoDepot contact list for you to get notified with new features and updates"
+        self.contactEmailQuestion = FormTextQuestion("What is your email address?", self.validateForm)
+        self.contactEmailQuestion.questionBox.toolTip = emailTooltip
+        layout.addWidget(self.contactEmailQuestion.questionBox)
+        self.contactEmailConfirmQuestion = FormTextQuestion("Confirm your email address:", self.validateForm)
+        self.contactEmailConfirmQuestion.questionBox.toolTip = emailTooltip
+        layout.addWidget(self.contactEmailConfirmQuestion.questionBox)
+
         if self.workflowMode:
             self.showSection(0)
 
@@ -1566,6 +1592,10 @@ class MorphoDepotAccessionForm():
         valid = valid and self.questions["repoType"].answer() != ""
         repoNameRegex = r"^(?:([a-zA-Z\d]+(?:-[a-zA-Z\d]+)*)/)?([\w.-]+)$"
         valid = valid and (re.match(repoNameRegex, self.questions["githubRepoName"].answer()) != None)
+        emailRegex = r'^[^@\s]+@[^@\s]+\.[^@\s]+$'
+        email = self.contactEmailQuestion.answer()
+        valid = valid and bool(re.match(emailRegex, email))
+        valid = valid and (email == self.contactEmailConfirmQuestion.answer())
         self.validationCallback(valid)
 
     def accessionData(self):

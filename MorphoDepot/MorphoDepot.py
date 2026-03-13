@@ -1582,7 +1582,6 @@ class MorphoDepotAccessionForm():
 
             # Section 3 is always required for biological
             valid = valid and self.questions["species"].answer() != ""
-            valid = valid and (len(self.questions["species"].answer().split()) == 2)
             valid = valid and self.questions["biologicalSex"].answer() != ""
             valid = valid and self.questions["developmentalStage"].answer() != ""
 
@@ -1673,7 +1672,7 @@ class FormTextQuestion(FormBaseQuestion):
 class FormSpeciesQuestion(FormTextQuestion):
     def __init__(self, question, validator):
         super().__init__(question, validator)
-        self.checkSpeciesButton = qt.QPushButton("Check species")
+        self.checkSpeciesButton = qt.QPushButton("Check Name")
         self.checkSpeciesButton.connect("clicked()", self.onCheckSpecies)
         self.questionLayout.addWidget(self.checkSpeciesButton)
         self.searchButton = qt.QPushButton()
@@ -1685,16 +1684,20 @@ class FormSpeciesQuestion(FormTextQuestion):
         self.searchDialog = None
 
     def _setSpeciesInfoLabel(self, result):
-        requiredKeys = ['matchType', 'rank', 'canonicalName', 'kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species']
-        for key in requiredKeys:
-            if key not in result:
-                result[key] = "missing"
-        if result['matchType'] == "NONE":
-            labelText = "No match"
-        elif result['rank'] != "SPECIES":
-            labelText = f"Not a species ({result['canonicalName']} is rank {result['rank']})"
-        else:
-            labelText = f"Kingdom: {result['kingdom']}, Phylum: {result['phylum']}, Class: {result['class']},\nOrder: {result['order']}, Family: {result['family']}, Genus: {result['genus']}, Species: {result['species']}"
+        if not result or result.get('matchType') == "NONE":
+            self.speciesInfo.text = "No match found in GBIF."
+            return
+
+        if 'canonicalName' not in result:
+            self.speciesInfo.text = "Valid name, but no taxonomic information in GBIF."
+            return
+
+        labelText = f"Name: {result['canonicalName']} (Rank: {result.get('rank', 'N/A')})\n"
+        hierarchy_parts = []
+        for rank in ['kingdom', 'phylum', 'class', 'order', 'family', 'genus', 'species']:
+            if result.get(rank):
+                hierarchy_parts.append(f"{rank.capitalize()}: {result[rank]}")
+        labelText += ", ".join(hierarchy_parts)
         self.speciesInfo.text = labelText
 
 
@@ -1722,15 +1725,15 @@ class FormSpeciesQuestion(FormTextQuestion):
         if len(text) < 3:
             return
         try:
-            results = pygbif.species.name_suggest(q=text, rank="species")
+            results = pygbif.species.name_suggest(q=text)
         except Exception as e:
-            slicer.util.errorDisplay(f"Error searching for species: {e}")
+            slicer.util.errorDisplay(f"Error searching for scientific name: {e}")
             return
         for result in results:
-            if result['rank'] == "SPECIES":
-                item = qt.QListWidgetItem(f"{result['canonicalName']} ({result['kingdom']})")
-                item.setData(qt.Qt.UserRole, result)
-                self.searchResults.addItem(item)
+            rank = result.get('rank', 'UNKNOWN').capitalize()
+            item = qt.QListWidgetItem(f"{result['canonicalName']} ({rank})")
+            item.setData(qt.Qt.UserRole, result)
+            self.searchResults.addItem(item)
 
     def onSearchResultClicked(self, item):
         result = item.data(qt.Qt.UserRole)

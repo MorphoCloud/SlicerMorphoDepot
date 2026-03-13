@@ -1889,6 +1889,14 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     def slicerVersionCheck(self):
         return hasattr(slicer.vtkSegment, "SetTerminology")
 
+    def resolveVolumeURL(self, volumeRef, repoNameWithOwner):
+        """Convert a source_volume file reference to a full download URL.
+        Accepts both legacy full URLs (backwards compatible) and new relative paths.
+        """
+        if volumeRef.startswith("http"):
+            return volumeRef  # existing repos with hardcoded URL — use as-is
+        return f"https://github.com/{repoNameWithOwner}/{volumeRef}"
+
     def localRepositoryDirectory(self):
         repoDirectory = os.path.normpath(slicer.util.settingsValue("MorphoDepot/repoDirectory", "") or "")
         if repoDirectory == "" or repoDirectory == ".":
@@ -2279,7 +2287,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         volumePath = os.path.join(localDirectory, "source_volume")
         if not os.path.exists(volumePath):
             volumePath = os.path.join(localDirectory, "master_volume") # for backwards compatibility
-        volumeURL = open(volumePath).read().strip()
+        volumeRef = open(volumePath).read().strip()
+        volumeURL = self.resolveVolumeURL(volumeRef, remoteNameWithOwner)
         cacheDirectory = os.path.join(self.localRepositoryDirectory(), "MorphoDepotCaches", "Volumes")
         os.makedirs(cacheDirectory, exist_ok=True)
         nrrdPath = os.path.join(cacheDirectory, f"{remoteNameWithOwner.replace('/', '-')}-volume.nrrd")
@@ -2651,9 +2660,9 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
         self.gh(commandList)
         self.gh(f"release upload --repo {repoNameWithOwner} v1 {sourceFilePath}#{sourceFileName}.nrrd")
 
-        # write source volume pointer file
+        # write source volume pointer file (owner-agnostic relative path for transfer safety)
         fp = open(os.path.join(repoDir, "source_volume"), "w")
-        fp.write(f"https://github.com/{repoNameWithOwner}/releases/download/v1/{sourceFileName}.nrrd")
+        fp.write(f"releases/download/v1/{sourceFileName}.nrrd")
         fp.close()
 
         repo.index.add([f"{repoDir}/source_volume"])
@@ -2718,7 +2727,8 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
                         self.progressMethod(f"Getting {sourceVolumeURL_path}")
                         sourceVolumeURL_req = requests.get(sourceVolumeURL_path)
                         if sourceVolumeURL_req.status_code == 200:
-                            volumeURL = sourceVolumeURL_req.text.strip()
+                            volumeRef = sourceVolumeURL_req.text.strip()
+                            volumeURL = self.resolveVolumeURL(volumeRef, f"{ownerLogin}/{repoName}")
                             self.progressMethod(f"Getting head of {volumeURL}")
                             head_req = requests.head(volumeURL, allow_redirects=True)
                             if head_req.status_code == 200 and 'Content-Length' in head_req.headers:

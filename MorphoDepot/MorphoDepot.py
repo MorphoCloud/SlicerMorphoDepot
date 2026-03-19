@@ -2194,7 +2194,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.cacheOldVersion(localDirectory)
 
         if repositoryName not in self.repositoryList():
-            self.gh(f"repo fork {sourceRepository} --remote=true --clone=false")
+            self.gh(f"repo fork {sourceRepository} --clone=false")
         self.gh(f"repo clone {repositoryName} {localDirectory}")
         self.localRepo = git.Repo(localDirectory)
         self.ensureUpstreamExists()

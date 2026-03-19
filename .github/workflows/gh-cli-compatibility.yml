@@ -56,16 +56,14 @@ jobs:
             --state open --search "in:title $TITLE" \
             --json number --jq '.[0].number // empty' 2>/dev/null || true)
 
-          BODY=$(cat compatibility_report.md)
-
           if [ -n "$EXISTING" ]; then
             gh issue edit "$EXISTING" --repo "$GITHUB_REPOSITORY" \
-              --body "$BODY"
+              --body-file compatibility_report.md
             echo "Updated existing issue #$EXISTING"
           else
             gh issue create --repo "$GITHUB_REPOSITORY" \
               --title "$TITLE" \
-              --body "$BODY" \
+              --body-file compatibility_report.md \
               --label "maintenance"
             echo "Created new compatibility issue"
           fi

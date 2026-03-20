@@ -527,6 +527,31 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         try:
             with slicer.util.tryWithErrorDisplay(_("Trouble creating repository"), waitCursor=True):
                 self.logic.createAccessionRepo(sourceVolume, colorTable, accessionData, sourceSegmentation, self.screenshots)
+                # Collect contact info — best-effort, runs in background thread so it never blocks the UI
+                CONTACT_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLScqzoTAIklSg2Dc4sQHMw-_J8PPQUOSBqFrpLnWpLS-tvvVHQ/formResponse"
+                CONTACT_FORM_ENTRY_EMAIL       = "entry.2057466047"  # Email Address
+                CONTACT_FORM_ENTRY_GH_USER     = "entry.1912463514"  # GitHub Username
+                CONTACT_FORM_ENTRY_REPO_NAME   = "entry.683034902"   # Repository Name
+                CONTACT_FORM_ENTRY_REPO_TYPE   = "entry.156019116"   # Repository Type
+                try:
+                    ghUser = self.logic.gh("api user --jq .login").strip()
+                except Exception:
+                    ghUser = ""
+                repoTypeFull = accessionData['repoType'][1]
+                repoTypeShort = "Archival" if repoTypeFull.startswith("Archival") else "Short-term"
+                formData = {
+                    CONTACT_FORM_ENTRY_EMAIL:     self.createUI.accessionForm.contactEmailQuestion.answer().strip(),
+                    CONTACT_FORM_ENTRY_GH_USER:   ghUser,
+                    CONTACT_FORM_ENTRY_REPO_NAME: accessionData['githubRepoName'][1],
+                    CONTACT_FORM_ENTRY_REPO_TYPE: repoTypeShort,
+                }
+                import threading
+                def _submitContactForm(url, data):
+                    try:
+                        requests.post(url, data=data, timeout=5)
+                    except Exception:
+                        pass  # non-critical
+                threading.Thread(target=_submitContactForm, args=(CONTACT_FORM_URL, formData), daemon=True).start()
         except Exception as e:
             slicer.util.showStatusMessage(f"Cleaning up...")
             repoName = accessionData['githubRepoName'][1]
@@ -678,6 +703,8 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         form.questions["githubRepoName"].answerText.text = repoName
         form.questions["redistributionAcknowledgement"].optionButtons["I have the right to allow redistribution of this data."].click()
         form.questions["repoType"].optionButtons["Short-term (e.g. repositories for classroom exercises, that are not meant to be maintained for long-term)"].click()
+        form.contactEmailQuestion.answerText.text = "test@example.com"
+        form.contactEmailConfirmQuestion.answerText.text = "test@example.com"
 
     def onTakeScreenshot(self):
         viewport = slicer.app.layoutManager().viewport()
@@ -1486,6 +1513,14 @@ class MorphoDepotAccessionForm():
         self.questions["repoType"] = FormRadioQuestion(q, a, self.validateForm)
         layout.addWidget(self.questions["repoType"].questionBox)
 
+        emailTooltip = "Your email will be added to the MorphoDepot contact list so you can be notified about new features and updates"
+        self.contactEmailQuestion = FormTextQuestion("What is your email address?", self.validateForm)
+        self.contactEmailQuestion.questionBox.toolTip = emailTooltip
+        layout.addWidget(self.contactEmailQuestion.questionBox)
+        self.contactEmailConfirmQuestion = FormTextQuestion("Confirm your email address:", self.validateForm)
+        self.contactEmailConfirmQuestion.questionBox.toolTip = emailTooltip
+        layout.addWidget(self.contactEmailConfirmQuestion.questionBox)
+
         if self.workflowMode:
             self.showSection(0)
 
@@ -1565,6 +1600,11 @@ class MorphoDepotAccessionForm():
         valid = valid and self.questions["repoType"].answer() != ""
         repoNameRegex = r"^(?:([a-zA-Z\d]+(?:-[a-zA-Z\d]+)*)/)?([\w.-]+)$"
         valid = valid and (re.match(repoNameRegex, self.questions["githubRepoName"].answer()) != None)
+        emailRegex = r'^[^@\s]+@[^@\s]+\.[^@\s]+$'
+        email = self.contactEmailQuestion.answer().strip()
+        valid = valid and bool(re.match(emailRegex, email))
+        valid = valid and (email == self.contactEmailConfirmQuestion.answer().strip().lower() or
+                           email.lower() == self.contactEmailConfirmQuestion.answer().strip().lower())
         self.validationCallback(valid)
 
     def accessionData(self):
@@ -1896,6 +1936,14 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
     def slicerVersionCheck(self):
         return hasattr(slicer.vtkSegment, "SetTerminology")
 
+    def resolveVolumeURL(self, volumeRef, repoNameWithOwner):
+        """Convert a source_volume file reference to a full download URL.
+        Accepts both legacy full URLs (backwards compatible) and new relative paths.
+        """
+        if volumeRef.startswith("http"):
+            return volumeRef  # existing repos with hardcoded URL — use as-is
+        return f"https://github.com/{repoNameWithOwner}/{volumeRef}"
+
     def localRepositoryDirectory(self):
         repoDirectory = os.path.normpath(slicer.util.settingsValue("MorphoDepot/repoDirectory", "") or "")
         if repoDirectory == "" or repoDirectory == ".":
@@ -2193,7 +2241,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.cacheOldVersion(localDirectory)
 
         if repositoryName not in self.repositoryList():
-            self.gh(f"repo fork {sourceRepository} --remote=true --clone=false")
+            self.gh(f"repo fork {sourceRepository} --clone=false")
         self.gh(f"repo clone {repositoryName} {localDirectory}")
         self.localRepo = git.Repo(localDirectory)
         self.ensureUpstreamExists()
@@ -2286,7 +2334,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         volumePath = os.path.join(localDirectory, "source_volume")
         if not os.path.exists(volumePath):
             volumePath = os.path.join(localDirectory, "master_volume") # for backwards compatibility
-        volumeURL = open(volumePath).read().strip()
+        volumeRef = open(volumePath).read().strip()
+        volumeURL = self.resolveVolumeURL(volumeRef, remoteNameWithOwner)
         cacheDirectory = os.path.join(self.localRepositoryDirectory(), "MorphoDepotCaches", "Volumes")
         os.makedirs(cacheDirectory, exist_ok=True)
         nrrdPath = os.path.join(cacheDirectory, f"{remoteNameWithOwner.replace('/', '-')}-volume.nrrd")
@@ -2664,7 +2713,9 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
         self.gh(f"repo edit {repoNameWithOwner} --add-topic morphodepot --add-topic md-{speciesTopicString}")
 
         # subscribe to all notifications for the new repository
-        self.gh(f"repo watch {repoNameWithOwner}")
+        # gh repo watch was removed in newer gh CLI versions; use the API directly
+        owner, repoName = repoNameWithOwner.split("/", 1)
+        self.gh(f"api --method PUT /repos/{owner}/{repoName}/subscription --field subscribed=true --field ignored=false")
 
         # create initial release and add asset
         # use list for command to handle spaces in notes
@@ -2673,9 +2724,9 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
         self.gh(commandList)
         self.gh(f"release upload --repo {repoNameWithOwner} v1 {sourceFilePath}#{sourceFileName}.nrrd")
 
-        # write source volume pointer file
+        # write source volume pointer file (owner-agnostic relative path for transfer safety)
         fp = open(os.path.join(repoDir, "source_volume"), "w")
-        fp.write(f"https://github.com/{repoNameWithOwner}/releases/download/v1/{sourceFileName}.nrrd")
+        fp.write(f"releases/download/v1/{sourceFileName}.nrrd")
         fp.close()
 
         repo.index.add([f"{repoDir}/source_volume"])
@@ -2740,7 +2791,8 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
                         self.progressMethod(f"Getting {sourceVolumeURL_path}")
                         sourceVolumeURL_req = requests.get(sourceVolumeURL_path)
                         if sourceVolumeURL_req.status_code == 200:
-                            volumeURL = sourceVolumeURL_req.text.strip()
+                            volumeRef = sourceVolumeURL_req.text.strip()
+                            volumeURL = self.resolveVolumeURL(volumeRef, f"{ownerLogin}/{repoName}")
                             self.progressMethod(f"Getting head of {volumeURL}")
                             head_req = requests.head(volumeURL, allow_redirects=True)
                             if head_req.status_code == 200 and 'Content-Length' in head_req.headers:

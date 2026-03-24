@@ -30,6 +30,7 @@ tags
 # Documentation
 Docs/_build
 Docs/_moduledescriptions
+Docs/RepoClerk-setup-prompt.md
 
 # CLI module translation files
 Docs/_extraCLI/*_tr.h

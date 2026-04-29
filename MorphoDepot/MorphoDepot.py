@@ -353,6 +353,36 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         # Release
         self.releaseUI.releasesCollapsibleButton.enabled = False
 
+        # New-release inputs: required baseline segmentation and color table go into the form
+        # layout next to the existing source-volume row. Screenshot widgets sit below in the
+        # vertical layout, between the form and the release-comments block.
+        self.releaseUI.newBaselineSelector = slicer.qMRMLNodeComboBox()
+        self.releaseUI.newBaselineSelector.nodeTypes = ["vtkMRMLSegmentationNode"]
+        self.releaseUI.newBaselineSelector.setMRMLScene(slicer.mrmlScene)
+        self.releaseUI.newBaselineSelector.noneEnabled = True
+        self.releaseUI.newBaselineSelector.noneDisplay = "Select a baseline segmentation (required)"
+        self.releaseUI.newBaselineSelector.toolTip = "Pick the segmentation to ship as the baseline for this release."
+        self.releaseUI.newBaselineSelector.setCurrentNode(None)
+        self.releaseUI.newReleaseFormLayout.addRow("New baseline segmentation:", self.releaseUI.newBaselineSelector)
+
+        self.releaseUI.newColorSelector = slicer.qMRMLColorTableComboBox()
+        self.releaseUI.newColorSelector.setMRMLScene(slicer.mrmlScene)
+        self.releaseUI.newColorSelector.noneDisplay = "Select a color table (required)"
+        self.releaseUI.newColorSelector.setCurrentNode(None)
+        self.releaseUI.newReleaseFormLayout.addRow("Color table:", self.releaseUI.newColorSelector)
+
+        releaseScreenshotButtonsLayout = qt.QHBoxLayout()
+        self.releaseUI.takeScreenshotButton = qt.QPushButton("Take Screenshot")
+        self.releaseUI.reviewScreenshotsButton = qt.QPushButton("Review Screenshots")
+        self.releaseUI.reviewScreenshotsButton.enabled = False
+        releaseScreenshotButtonsLayout.addWidget(self.releaseUI.takeScreenshotButton)
+        releaseScreenshotButtonsLayout.addWidget(self.releaseUI.reviewScreenshotsButton)
+        self.releaseUI.screenshotCountLabel = qt.QLabel("0 screenshots taken")
+        # Insert above the existing release-comments label (newReleaseLayout indices: 0=form,
+        # 1=releaseCommentsLabel, 2=releaseCommentsEdit, 3=makeReleaseButton).
+        self.releaseUI.newReleaseLayout.insertLayout(1, releaseScreenshotButtonsLayout)
+        self.releaseUI.newReleaseLayout.insertWidget(2, self.releaseUI.screenshotCountLabel)
+
         # Pre-release announcement section (added dynamically; sits between repo list and Releases)
         self.releaseUI.announcementCollapsibleButton = ctk.ctkCollapsibleButton()
         self.releaseUI.announcementCollapsibleButton.text = "Pre-release Announcement"
@@ -441,6 +471,10 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.releaseUI.makeReleaseButton.clicked.connect(self.onMakeRelease)
         self.releaseUI.openReleasePageButton.clicked.connect(self.onOpenReleasePage)
         self.releaseUI.announceButton.clicked.connect(self.onAnnounceUpcomingRelease)
+        self.releaseUI.newBaselineSelector.connect("currentNodeChanged(vtkMRMLNode*)", lambda _: self.updateMakeReleaseEnabled())
+        self.releaseUI.newColorSelector.connect("currentNodeChanged(vtkMRMLNode*)", lambda _: self.updateMakeReleaseEnabled())
+        self.releaseUI.takeScreenshotButton.clicked.connect(self.onTakeScreenshot)
+        self.releaseUI.reviewScreenshotsButton.clicked.connect(self.onReviewScreenshots)
         self.searchUI.resultsTable.doubleClicked.connect(self.onSearchResultsDoubleClicked)
         self.searchUI.refreshButton.clicked.connect(self.onRefreshSearch)
         self.searchUI.saveSearchResultsButton.clicked.connect(self.onSaveSearchResults)
@@ -787,8 +821,12 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
 
     def updateScreenshotCount(self):
         count = len(self.screenshots)
-        self.createUI.screenshotCountLabel.text = f"{count} screenshot{'s' if count != 1 else ''} taken"
+        text = f"{count} screenshot{'s' if count != 1 else ''} taken"
+        self.createUI.screenshotCountLabel.text = text
         self.createUI.reviewScreenshotsButton.enabled = count > 0
+        if hasattr(self.releaseUI, 'screenshotCountLabel'):
+            self.releaseUI.screenshotCountLabel.text = text
+            self.releaseUI.reviewScreenshotsButton.enabled = count > 0
 
     def onCommitMessageChanged(self, text):
         commitEnabled = (text != "")
@@ -1039,6 +1077,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             self.releaseUI.announcementCounts.text = "Targets: (load a repository)"
             self.releaseUI.currentRepoLabel.text = "No repository loaded"
             self.releaseUI.currentVersionLabel.text = "Current version: None"
+            self.releaseUI.sourceVolumeLabel.text = ""
             self.releaseUI.openReleasePageButton.enabled = False
             self.reposByItem = {}
             administratedRepos = self.logic.administratedRepoList()
@@ -1064,13 +1103,26 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             with slicer.util.tryWithErrorDisplay("Failed to load repository", waitCursor=True):
                 if self.logic.loadRepoForRelease(repoData):
                     self.releaseUI.currentRepoLabel.text = f"Loaded: {repoData['nameWithOwner']}"
+                    self.releaseUI.sourceVolumeLabel.text = getattr(self.logic, 'sourceVolumeName', '') or ""
                     self.releaseUI.releasesCollapsibleButton.enabled = True
                     self.releaseUI.announcementCollapsibleButton.enabled = True
-                    self.releaseUI.makeReleaseButton.enabled = True
+                    # Auto-select what the loader pulled out of the repo so the user has a
+                    # working default for both required fields (still editable by the user).
+                    self.releaseUI.newBaselineSelector.setCurrentNode(getattr(self.logic, 'baselineSegmentationNode', None))
+                    self.releaseUI.newColorSelector.setCurrentNode(getattr(self.logic, 'colorTableNode', None))
                     self.updateAnnouncementCounts(repoData)
                     self.updateReleaseNotesTemplate(repoData)
                     self.updateCurrentVersionLabel()
+                    self.updateMakeReleaseEnabled()
                     slicer.util.showStatusMessage(f"Repository {repoData['nameWithOwner']} loaded.")
+
+    def updateMakeReleaseEnabled(self):
+        """The Make Release button requires a loaded repository plus both a baseline
+        segmentation and a color table to be selected."""
+        hasRepo = self.logic is not None and self.logic.localRepo is not None
+        hasSegmentation = self.releaseUI.newBaselineSelector.currentNode() is not None
+        hasColorTable = self.releaseUI.newColorSelector.currentNode() is not None
+        self.releaseUI.makeReleaseButton.enabled = bool(hasRepo and hasSegmentation and hasColorTable)
 
     def updateAnnouncementCounts(self, repoData):
         issues = repoData.get('issues', {}).get('totalCount', 0)
@@ -1347,17 +1399,97 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
     def onMakeRelease(self):
         if not self.logic.localRepo:
             return
-        slicer.util.showStatusMessage("Creating new release...")
-        releaseNotes = self.releaseUI.releaseCommentsEdit.plainText
+        baselineNode = self.releaseUI.newBaselineSelector.currentNode()
+        colorTableNode = self.releaseUI.newColorSelector.currentNode()
+        if baselineNode is None or colorTableNode is None:
+            return
+
         nameWithOwner = self.logic.nameWithOwner("origin")
+        newTag = self.logic.nextReleaseTag()
+        plan = self.logic.releaseSnapshotPlan(newTag, baselineNode, colorTableNode, self.screenshots)
+        if plan is None:
+            return
+
+        prompt = self.buildReleaseConfirmation(plan, baselineNode, colorTableNode)
+        if not (self.testingMode or slicer.util.confirmOkCancelDisplay(prompt, windowTitle=f"Make release {newTag}")):
+            return
+
+        slicer.util.showStatusMessage(f"Creating release {newTag}...")
+        releaseNotes = self.releaseUI.releaseCommentsEdit.plainText
         createdTag = None
-        with slicer.util.tryWithErrorDisplay("Failed to create release", waitCursor=True):
-            createdTag = self.logic.createRelease(releaseNotes)
+        try:
+            createdTag = self.logic.createRelease(
+                releaseNotes,
+                baselineSegmentationNode=baselineNode,
+                colorTableNode=colorTableNode,
+                screenshots=self.screenshots,
+            )
+        except Exception as e:
+            self.handleReleaseFailure(e)
+            return
+
+        self.logic.discardReleaseBackup()
         self.releaseUI.releaseCommentsEdit.plainText = ""
         self.updateCurrentVersionLabel()
         if createdTag:
             self.maybeCloseOpenItemsForRelease(nameWithOwner, createdTag)
+            # Reset the in-session screenshots so the next release starts clean.
+            self.screenshots = []
+            self.updateScreenshotCount()
         slicer.util.showStatusMessage("New release created. You can add more comments on the GitHub release page.")
+
+    def buildReleaseConfirmation(self, plan, baselineNode, colorTableNode):
+        """Compose the OK/Cancel summary describing every action that will run during release."""
+        lines = []
+        lines.append(f"Make release {plan['newTag']} for the loaded repository.")
+        lines.append("")
+        lines.append("If you click OK, the following will happen on main:")
+        lines.append(f"• The selected segmentation '{baselineNode.GetName()}' will be saved as baseline.seg.nrrd (replacing any existing one).")
+        lines.append(f"• The selected color table '{colorTableNode.GetName()}' will be saved (replacing any existing one).")
+        if plan['archivedReadme']:
+            lines.append(f"• README.md will be moved to {plan['archivedReadme']} and a new README.md will be generated for {plan['newTag']}.")
+        else:
+            lines.append(f"• A new README.md will be generated for {plan['newTag']}.")
+        if plan['newScreenshotNames']:
+            lines.append(
+                f"• {len(plan['newScreenshotNames'])} new screenshot(s) will be added: "
+                f"{', '.join(plan['newScreenshotNames'])}."
+            )
+        else:
+            lines.append("• No new screenshots will be added.")
+        if plan['issueSegFiles']:
+            lines.append(
+                f"• {len(plan['issueSegFiles'])} per-issue segmentation file(s) will be removed from the working tree "
+                f"(still preserved in git history): {', '.join(plan['issueSegFiles'])}."
+            )
+        lines.append(
+            f"• These changes will be committed and pushed to origin/main, then the {plan['newTag']} "
+            f"release tag will be created at the same commit."
+        )
+        lines.append("")
+        lines.append("No data is lost: prior versions of every changed file remain in git history, and clicking Cancel makes no changes at all.")
+        lines.append("If anything fails partway, you will be offered the chance to reset the local repo to its pre-release state or to keep the partial changes for manual inspection.")
+        return "\n".join(lines)
+
+    def handleReleaseFailure(self, error):
+        """Offer reset-to-backup or leave-for-debug after a release failure."""
+        msg = (
+            f"Release creation failed:\n{error}\n\n"
+            "Click OK to reset the local repository to its pre-release state.\n"
+            "Click Cancel to leave the working tree as is so you can salvage screenshots or other work.\n\n"
+            "Note: a local reset cannot undo any push that may have already reached origin/main; "
+            "if the push succeeded you may need to fix things on GitHub manually."
+        )
+        if (not self.testingMode) and slicer.util.confirmOkCancelDisplay(msg, windowTitle="Release failed"):
+            try:
+                self.logic.resetToReleaseBackup()
+                slicer.util.showStatusMessage("Local repository reset to pre-release state.")
+            except Exception as resetError:
+                slicer.util.errorDisplay(f"Reset failed: {resetError}")
+        else:
+            slicer.util.showStatusMessage(
+                f"Release left mid-flight. Backup branch: {getattr(self.logic, 'releaseBackupBranch', None)}"
+            )
 
     def maybeCloseOpenItemsForRelease(self, nameWithOwner, version):
         """After a release, offer to close all remaining open issues and PRs."""
@@ -2444,13 +2576,14 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
         self.progressMethod(f"Loading {branchName} into {localDirectory}")
 
+        self.colorTableNode = None
         try:
             colorPath = glob.glob(f"{localDirectory}/*.csv")[0]
-            colorNode = slicer.util.loadColorTable(colorPath)
+            self.colorTableNode = slicer.util.loadColorTable(colorPath)
         except IndexError:
             try:
                 colorPath = glob.glob(f"{localDirectory}/*.ctbl")[0]
-                colorNode = slicer.util.loadColorTable(colorPath)
+                self.colorTableNode = slicer.util.loadColorTable(colorPath)
             except IndexError:
                 self.ghProgressMethod(f"No color table found")
 
@@ -2459,6 +2592,9 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         if not os.path.exists(volumePath):
             volumePath = os.path.join(localDirectory, "master_volume") # for backwards compatibility
         volumeRef = open(volumePath).read().strip()
+        # The source_volume pointer is "releases/download/v1/{originalName}.nrrd";
+        # remember the original name so the UI can display it.
+        self.sourceVolumeName = os.path.basename(volumeRef).rsplit('.nrrd', 1)[0]
         volumeURL = self.resolveVolumeURL(volumeRef, remoteNameWithOwner)
         cacheDirectory = os.path.join(self.localRepositoryDirectory(), "MorphoDepotCaches", "Volumes")
         os.makedirs(cacheDirectory, exist_ok=True)
@@ -2477,6 +2613,12 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         for segmentationPath in glob.glob(f"{localDirectory}/*.seg.nrrd"):
             name = os.path.split(segmentationPath)[1].split(".")[0]
             segmentationNodesByName[name] = slicer.util.loadSegmentation(segmentationPath)
+        # Default for the New release "baseline segmentation" picker: prefer a segmentation
+        # named "baseline" if present, otherwise fall back to whatever loaded.
+        self.baselineSegmentationNode = (
+            segmentationNodesByName.get("baseline")
+            or (next(iter(segmentationNodesByName.values()), None))
+        )
 
         if configuration in ("segment", "reviewer"):
             for segmentationNode in segmentationNodesByName.values():
@@ -2701,15 +2843,223 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             nextVersion = max(versions) + 1
         return f"v{nextVersion}"
 
-    def createRelease(self, releaseNotes=""):
-        """Create a new release for the current repository with an incremented version. Returns the new tag."""
+    def previousReleaseTag(self):
+        """Latest existing release tag, or None if no releases yet."""
         if not self.localRepo:
             return None
+        releases = self.getReleases() or []
+        tagNames = [r['tagName'] for r in releases if r['tagName'].startswith('v')]
+        versions = [int(t[1:]) for t in tagNames if t[1:].isdigit()]
+        if not versions:
+            return None
+        return f"v{max(versions)}"
+
+    def existingScreenshotCount(self):
+        """Highest existing screenshot-N.png index in the loaded repo's screenshots/ directory."""
+        if not self.localRepo:
+            return 0
+        screenshotsDir = os.path.join(self.localRepo.working_dir, "screenshots")
+        if not os.path.exists(screenshotsDir):
+            return 0
+        highest = 0
+        for entry in os.listdir(screenshotsDir):
+            match = re.match(r"^screenshot-(\d+)\.png$", entry)
+            if match:
+                highest = max(highest, int(match.group(1)))
+        return highest
+
+    def releaseSnapshotPlan(self, newTag, baselineNode, colorTableNode, screenshots):
+        """Build a description of what prepareReleaseSnapshot will do, for the confirmation UI."""
+        if not self.localRepo:
+            return None
+        repoDir = self.localRepo.working_dir
+        previousTag = self.previousReleaseTag()
+        issueSegFiles = sorted(os.path.basename(p) for p in glob.glob(os.path.join(repoDir, "issue-*.seg.nrrd")))
+        startIndex = self.existingScreenshotCount() + 1
+        return {
+            'newTag': newTag,
+            'previousTag': previousTag,
+            'baselineName': baselineNode.GetName() if baselineNode else None,
+            'colorTableName': colorTableNode.GetName() if colorTableNode else None,
+            'newScreenshotNames': [f"screenshot-{startIndex + i}.png" for i in range(len(screenshots or []))],
+            'issueSegFiles': issueSegFiles,
+            'archivedReadme': f"README-{previousTag}.md" if previousTag else None,
+        }
+
+    def generateReleaseReadme(self, newTag, newScreenshotEntries):
+        """Build a new README.md body for the given release. Reuses metadata from
+        MorphoDepotAccession.json. Lists previous-version README files. Lists only
+        screenshots from this release flow (older screenshots stay in their archived READMEs)."""
+        repoDir = self.localRepo.working_dir
+        accessionPath = os.path.join(repoDir, "MorphoDepotAccession.json")
+        accession = {}
+        if os.path.exists(accessionPath):
+            try:
+                with open(accessionPath) as f:
+                    accession = json.load(f)
+            except Exception as e:
+                logging.warning(f"Could not parse MorphoDepotAccession.json: {e}")
+
+        def field(key, default=""):
+            v = accession.get(key)
+            if isinstance(v, list) and len(v) >= 2:
+                return v[1] or default
+            return v or default
+
+        species = field('species', "Unknown species")
+        modality = field('modality', "Unknown")
+        contrast = field('contrastEnhancement', "Unknown")
+        scanDimensions = accession.get('scanDimensions', "Unknown")
+        scanSpacing = accession.get('scanSpacing', "Unknown")
+
+        lines = [f"# Release {newTag}", ""]
+
+        previousReadmes = sorted(
+            glob.glob(os.path.join(repoDir, "README-v*.md")),
+            key=lambda p: int(os.path.basename(p).replace("README-v", "").replace(".md", "")),
+        )
+        if previousReadmes:
+            lines.append("## Previous releases")
+            for p in previousReadmes:
+                name = os.path.basename(p)
+                tag = name.replace("README-", "").replace(".md", "")
+                lines.append(f"- [{tag}]({name})")
+            lines.append("")
+
+        lines.append("## MorphoDepot Repository")
+        lines.append("Repository for segmentation of a specimen scan. See [this JSON file](MorphoDepotAccession.json) for specimen details.")
+        lines.append(f"* Species: {species}")
+        lines.append(f"* Modality: {modality}")
+        lines.append(f"* Contrast: {contrast}")
+        lines.append(f"* Dimensions: {scanDimensions}")
+        lines.append(f"* Spacing (mm): {scanSpacing}")
+
+        if newScreenshotEntries:
+            lines.append("")
+            lines.append(f"## Screenshots for {newTag}")
+            for name, caption in newScreenshotEntries:
+                altText = caption or name
+                lines.append(f"![{altText}](screenshots/{name})")
+                if caption:
+                    lines.append(f"_{caption}_")
+
+        return "\n".join(lines) + "\n"
+
+    def prepareReleaseSnapshot(self, newTag, baselineNode, colorTableNode, screenshots):
+        """Stage the working tree for a release tag: write baseline.seg.nrrd from the picked
+        segmentation, overwrite the repo's color table with the picked one, rotate README.md
+        to README-{previousTag}.md and generate a fresh README.md, append new screenshots
+        with sequential numbering (and update screenshots/captions.json), drop issue-*.seg.nrrd
+        from the working tree (still in git history). Then commit and push to origin/main."""
+        if not self.localRepo:
+            return None
+        repoDir = self.localRepo.working_dir
+        previousTag = self.previousReleaseTag()
+
+        # Baseline segmentation
+        baselinePath = os.path.join(repoDir, "baseline.seg.nrrd")
+        if not slicer.util.saveNode(baselineNode, baselinePath, properties={'useCompression': True}):
+            raise RuntimeError(f"Failed to save baseline segmentation to {baselinePath}")
+
+        # Color table — overwrite the existing repo color file (.csv preferred over .ctbl).
+        csvPaths = glob.glob(f"{repoDir}/*.csv")
+        ctblPaths = glob.glob(f"{repoDir}/*.ctbl")
+        if csvPaths:
+            colorTablePath = csvPaths[0]
+        elif ctblPaths:
+            colorTablePath = ctblPaths[0]
+        else:
+            colorTablePath = os.path.join(repoDir, f"{colorTableNode.GetName()}.csv")
+        if not slicer.util.saveNode(colorTableNode, colorTablePath):
+            raise RuntimeError(f"Failed to save color table to {colorTablePath}")
+
+        # New screenshots — continue sequential numbering from existing files.
+        newScreenshotEntries = []
+        if screenshots:
+            screenshotsDir = os.path.join(repoDir, "screenshots")
+            os.makedirs(screenshotsDir, exist_ok=True)
+            startIndex = self.existingScreenshotCount() + 1
+            captionsPath = os.path.join(screenshotsDir, "captions.json")
+            captions = {}
+            if os.path.exists(captionsPath):
+                try:
+                    with open(captionsPath) as f:
+                        captions = json.load(f)
+                except Exception:
+                    captions = {}
+            for i, ss in enumerate(screenshots):
+                name = f"screenshot-{startIndex + i}.png"
+                shutil.copy(ss['path'], os.path.join(screenshotsDir, name))
+                captions[name] = ss.get('caption', '')
+                newScreenshotEntries.append((name, ss.get('caption', '')))
+            with open(captionsPath, "w") as f:
+                json.dump(captions, f, indent=2)
+
+        # README rotation + fresh README for the new tag
+        readmePath = os.path.join(repoDir, "README.md")
+        if previousTag and os.path.exists(readmePath):
+            shutil.move(readmePath, os.path.join(repoDir, f"README-{previousTag}.md"))
+        with open(readmePath, "w") as f:
+            f.write(self.generateReleaseReadme(newTag, newScreenshotEntries))
+
+        # Drop per-issue segmentations from the working tree (kept in history)
+        for path in glob.glob(os.path.join(repoDir, "issue-*.seg.nrrd")):
+            os.remove(path)
+
+        # Stage everything (added, modified, deleted), commit, push.
+        self.localRepo.git.add("--all")
+        self.localRepo.index.commit(f"Prepare release {newTag}")
+        self.localRepo.remote(name="origin").push("main")
+
+    def resetToReleaseBackup(self):
+        """Reset main to the pre-release backup branch and discard untracked changes.
+        Local-only: does NOT undo anything that was already pushed to origin/main."""
+        backup = getattr(self, 'releaseBackupBranch', None)
+        if not (self.localRepo and backup):
+            return False
+        self.localRepo.git.reset("--hard", backup)
+        self.localRepo.git.clean("-fd")
+        try:
+            self.localRepo.git.branch("-D", backup)
+        except Exception:
+            pass
+        self.releaseBackupBranch = None
+        return True
+
+    def discardReleaseBackup(self):
+        """Drop the backup branch after a successful release."""
+        backup = getattr(self, 'releaseBackupBranch', None)
+        if not (self.localRepo and backup):
+            return
+        try:
+            self.localRepo.git.branch("-D", backup)
+        except Exception:
+            pass
+        self.releaseBackupBranch = None
+
+    def createRelease(self, releaseNotes="", baselineSegmentationNode=None, colorTableNode=None, screenshots=None):
+        """Create a new release: take a local backup branch, prepare the working tree
+        (baseline, color table, README rotation, drop issue segmentations, screenshots),
+        commit, push to origin/main, then create the gh release tag at that commit.
+        On exception the backup branch is left in place so resetToReleaseBackup can roll
+        back the local repo. Returns the new tag on success."""
+        if not self.localRepo:
+            return None
+        if baselineSegmentationNode is None or colorTableNode is None:
+            raise RuntimeError("A baseline segmentation and color table must both be selected.")
         tag = self.nextReleaseTag()
+        if tag is None:
+            return None
+
+        backupName = f"morphodepot-release-backup-{tag}-{int(time.time())}"
+        self.localRepo.git.branch(backupName)
+        self.releaseBackupBranch = backupName
+
+        self.prepareReleaseSnapshot(tag, baselineSegmentationNode, colorTableNode, screenshots or [])
+
         originNameWithOwner = self.nameWithOwner("origin")
         if releaseNotes == "":
             releaseNotes = f"Version {tag} release."
-        # use list for command to handle spaces in releaseNotes
         commandList = ["release", "create", tag, "--repo", originNameWithOwner]
         commandList += ["--notes", releaseNotes]
         self.gh(commandList)

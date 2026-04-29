@@ -2117,7 +2117,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             return json.loads(jsonString)
         return []
 
-    REPOCLERK_URL = "https://github.com/pieper/RepoClerk"
+    REPOCLERK_URL = "https://github.com/MorphoDepot/RepoClerk"
     REPOCLERK_SIZE_LIMIT_MB = 100
 
     def refreshRepoClerk(self):
@@ -2169,7 +2169,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         The drain loop picks up and closes these issues as it processes them."""
         self.gh([
             "issue", "create",
-            "--repo", "pieper/RepoClerk",
+            "--repo", "MorphoDepot/RepoClerk",
             "--title", f"update {nameWithOwner}",
             "--label", "update-request",
             "--body", "",
@@ -2179,7 +2179,7 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         """Returns True if there are open update-request issues in RepoClerk.
         Issues are only closed once the drain loop has finished processing them,
         so this covers the full window from queuing through page rebuild completion."""
-        result = self.gh("issue list --repo pieper/RepoClerk --state open --label update-request --json number")
+        result = self.gh("issue list --repo MorphoDepot/RepoClerk --state open --label update-request --json number")
         if result:
             try:
                 return len(json.loads(result)) > 0

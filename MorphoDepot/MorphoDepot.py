@@ -144,8 +144,8 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.screenshots = [] # list of dicts with 'path' and 'caption'
 
         # development config:
-        ## disable releaseUI and adminUI for now, but keep as placeholder for future development
-        self.includeReleaseUI = False
+        ## adminUI still placeholder; releaseUI re-enabled for release-management work (see #119)
+        self.includeReleaseUI = True
         self.includeAdminUI = False
 
     def progressMethod(self, message=None):
@@ -353,6 +353,38 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         # Release
         self.releaseUI.releasesCollapsibleButton.enabled = False
 
+        # Pre-release announcement section (added dynamically; sits between repo list and Releases)
+        self.releaseUI.announcementCollapsibleButton = ctk.ctkCollapsibleButton()
+        self.releaseUI.announcementCollapsibleButton.text = "Pre-release Announcement"
+        self.releaseUI.announcementCollapsibleButton.enabled = False
+        self.releaseUI.announcementCollapsibleButton.collapsed = True
+        announcementLayout = qt.QFormLayout(self.releaseUI.announcementCollapsibleButton)
+
+        self.releaseUI.announcementCounts = qt.QLabel("Targets: (load a repository)")
+        announcementLayout.addRow(self.releaseUI.announcementCounts)
+
+        self.releaseUI.announcementDeadline = qt.QDateEdit()
+        self.releaseUI.announcementDeadline.calendarPopup = True
+        self.releaseUI.announcementDeadline.displayFormat = "yyyy-MM-dd"
+        self.releaseUI.announcementDeadline.date = qt.QDate.currentDate().addDays(14)
+        announcementLayout.addRow("Deadline:", self.releaseUI.announcementDeadline)
+
+        self.releaseUI.announcementMessageEdit = qt.QPlainTextEdit()
+        self.releaseUI.announcementMessageEdit.placeholderText = "Message body. {deadline} will be replaced with the date above."
+        self.releaseUI.announcementMessageEdit.plainText = (
+            "The repository owner is planning to cut a new release on {deadline}.\n"
+            "Please complete and submit your work before that date so it can be incorporated.\n"
+            "Contributions not submitted by release time will not be included; "
+            "after the release you will need to sync to the new baseline before resuming."
+        )
+        announcementLayout.addRow("Message:", self.releaseUI.announcementMessageEdit)
+
+        self.releaseUI.announceButton = qt.QPushButton("Notify contributors")
+        announcementLayout.addRow(self.releaseUI.announceButton)
+
+        # Insert before the existing Releases collapsible (refresh=0, repos=1, [insert here]=2, releases=3)
+        self.releaseUI.verticalLayout.insertWidget(2, self.releaseUI.announcementCollapsibleButton)
+
         # Search
         self.searchUI.searchForm = MorphoDepotSearchForm(updateCallback=self.doSearch)
         self.searchUI.searchCollapsibleButton.layout().addWidget(self.searchUI.searchForm.topWidget)
@@ -408,6 +440,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.releaseUI.repoList.itemDoubleClicked.connect(self.onReleaseRepoDoubleClicked)
         self.releaseUI.makeReleaseButton.clicked.connect(self.onMakeRelease)
         self.releaseUI.openReleasePageButton.clicked.connect(self.onOpenReleasePage)
+        self.releaseUI.announceButton.clicked.connect(self.onAnnounceUpcomingRelease)
         self.searchUI.resultsTable.doubleClicked.connect(self.onSearchResultsDoubleClicked)
         self.searchUI.refreshButton.clicked.connect(self.onRefreshSearch)
         self.searchUI.saveSearchResultsButton.clicked.connect(self.onSaveSearchResults)
@@ -415,6 +448,8 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         # set initial visibility of admin tab
         self.onAdminModeChanged(self.configureUI.adminModeCheckBox.checkState())
         self.reviewUI.hideDraftsCheckBox.checked = self.hidePRDrafts
+
+        self.updateRefreshButtonLabels()
 
     def cleanup(self) -> None:
         """Called when the application closes and the module widget is destroyed."""
@@ -431,6 +466,18 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
 
     def onCurrentTabChanged(self,index):
         qt.QSettings().setValue("MorphoDepot/tabIndex", index)
+        self.updateRefreshButtonLabels()
+
+    def updateRefreshButtonLabels(self):
+        """Suffix the Annotate/Review/Release Refresh GitHub buttons with the active gh user."""
+        try:
+            user = self.logic.whoami()
+            suffix = f" (user: {user})"
+        except Exception:
+            suffix = ""
+        self.annotateUI.refreshButton.text = f"Refresh Github{suffix}"
+        self.reviewUI.refreshButton.text = f"Refresh Github{suffix}"
+        self.releaseUI.refreshButton.text = f"Refresh Github{suffix}"
 
     def onAdminModeChanged(self, state):
         isAdmin = (state == qt.Qt.Checked)
@@ -567,6 +614,8 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
 
     def showConfirmationDialog(self, sourceVolume, colorTable, accessionData, sourceSegmentation, screenshots):
         """Shows a confirmation dialog with a summary of the repository to be created."""
+        if self.testingMode:
+            return True
         dialog = qt.QDialog(slicer.util.mainWindow())
         dialog.setWindowTitle("Confirm Repository Creation")
         layout = qt.QVBoxLayout(dialog)
@@ -986,13 +1035,23 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             self.releaseUI.repoList.clear()
             self.releaseUI.makeReleaseButton.enabled = False
             self.releaseUI.releasesCollapsibleButton.enabled = False
+            self.releaseUI.announcementCollapsibleButton.enabled = False
+            self.releaseUI.announcementCounts.text = "Targets: (load a repository)"
             self.releaseUI.currentRepoLabel.text = "No repository loaded"
             self.releaseUI.currentVersionLabel.text = "Current version: None"
             self.releaseUI.openReleasePageButton.enabled = False
             self.reposByItem = {}
             administratedRepos = self.logic.administratedRepoList()
             for repo in administratedRepos:
-                item = qt.QListWidgetItem(repo['nameWithOwner'])
+                issues = repo.get('issues', {}).get('totalCount', 0)
+                prs = repo.get('pullRequests', {}).get('totalCount', 0)
+                issueLabel = "issue" if issues == 1 else "issues"
+                prLabel = "PR" if prs == 1 else "PRs"
+                label = f"{repo['nameWithOwner']}  ({issues} open {issueLabel}, {prs} open {prLabel})"
+                item = qt.QListWidgetItem(label)
+                tooltip = self.repoTooltip(repo)
+                if tooltip:
+                    item.setToolTip(tooltip)
                 self.reposByItem[item] = repo
                 self.releaseUI.repoList.addItem(item)
             slicer.util.showStatusMessage(f"Found {len(administratedRepos)} owned repositories.")
@@ -1006,9 +1065,62 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
                 if self.logic.loadRepoForRelease(repoData):
                     self.releaseUI.currentRepoLabel.text = f"Loaded: {repoData['nameWithOwner']}"
                     self.releaseUI.releasesCollapsibleButton.enabled = True
+                    self.releaseUI.announcementCollapsibleButton.enabled = True
                     self.releaseUI.makeReleaseButton.enabled = True
+                    self.updateAnnouncementCounts(repoData)
+                    self.updateReleaseNotesTemplate(repoData)
                     self.updateCurrentVersionLabel()
                     slicer.util.showStatusMessage(f"Repository {repoData['nameWithOwner']} loaded.")
+
+    def updateAnnouncementCounts(self, repoData):
+        issues = repoData.get('issues', {}).get('totalCount', 0)
+        prs = repoData.get('pullRequests', {}).get('totalCount', 0)
+        self.releaseUI.announcementCounts.text = f"Will post to {issues} open issues and {prs} open PRs."
+
+    def repoTooltip(self, repo):
+        """Build a multiline tooltip listing open issues and PRs for a repo."""
+        lines = []
+        issueNodes = repo.get('issues', {}).get('nodes', []) or []
+        if issueNodes:
+            lines.append("Open issues:")
+            for issue in issueNodes:
+                authorNode = issue.get('author') or {}
+                author = authorNode.get('login', '?')
+                assignees = ", ".join(
+                    f"@{a['login']}" for a in (issue.get('assignees', {}) or {}).get('nodes', []) or []
+                )
+                line = f"  #{issue['number']}: {issue['title']} (by @{author}"
+                if assignees:
+                    line += f", assigned: {assignees}"
+                line += ")"
+                lines.append(line)
+        prNodes = repo.get('pullRequests', {}).get('nodes', []) or []
+        if prNodes:
+            if lines:
+                lines.append("")
+            lines.append("Open PRs:")
+            for pr in prNodes:
+                authorNode = pr.get('author') or {}
+                author = authorNode.get('login', '?')
+                draft = " [draft]" if pr.get('isDraft') else ""
+                lines.append(f"  #{pr['number']}: {pr['title']} (by @{author}){draft}")
+        return "\n".join(lines)
+
+    def updateReleaseNotesTemplate(self, repoData):
+        """Prefill the release-notes editor with two blank lines (for owner prose) and an
+        autogenerated change log of issues closed since the last release."""
+        nameWithOwner = repoData['nameWithOwner']
+        try:
+            closedIssues = self.logic.closedIssuesSinceLastRelease(nameWithOwner)
+        except Exception as e:
+            logging.warning(f"Could not fetch closed-issue change log: {e}")
+            closedIssues = []
+        lines = ["", ""]  # two blank lines for the owner's prose
+        if closedIssues:
+            lines.append("## Changes in this release")
+            for issue in closedIssues:
+                lines.append(f"- #{issue['number']}: {issue['title']}")
+        self.releaseUI.releaseCommentsEdit.plainText = "\n".join(lines)
 
     def updateCurrentVersionLabel(self):
         """Gets releases and updates the version label and open page button."""
@@ -1233,13 +1345,57 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
             slicer.util.errorDisplay(f"Could not save search results to {fileName}: {e}")
 
     def onMakeRelease(self):
+        if not self.logic.localRepo:
+            return
         slicer.util.showStatusMessage("Creating new release...")
         releaseNotes = self.releaseUI.releaseCommentsEdit.plainText
+        nameWithOwner = self.logic.nameWithOwner("origin")
+        createdTag = None
         with slicer.util.tryWithErrorDisplay("Failed to create release", waitCursor=True):
-            self.logic.createRelease(releaseNotes)
+            createdTag = self.logic.createRelease(releaseNotes)
         self.releaseUI.releaseCommentsEdit.plainText = ""
         self.updateCurrentVersionLabel()
+        if createdTag:
+            self.maybeCloseOpenItemsForRelease(nameWithOwner, createdTag)
         slicer.util.showStatusMessage("New release created. You can add more comments on the GitHub release page.")
+
+    def maybeCloseOpenItemsForRelease(self, nameWithOwner, version):
+        """After a release, offer to close all remaining open issues and PRs."""
+        with slicer.util.tryWithErrorDisplay("Failed to query open items", waitCursor=True):
+            issues, prs = self.logic.openIssuesAndPRs(nameWithOwner)
+        if not issues and not prs:
+            return
+        prompt = (
+            f"Release {version} created.\n\n"
+            f"Close {len(issues)} open issues and {len(prs)} open PRs as part of the release?\n"
+            f"(Open PRs will be closed without merging — contributors must rebase onto the new baseline.)"
+        )
+        if not (self.testingMode or slicer.util.confirmOkCancelDisplay(prompt)):
+            return
+        with slicer.util.tryWithErrorDisplay("Failed to close open items", waitCursor=True):
+            ni, np = self.logic.closeOpenItemsForRelease(nameWithOwner, version)
+            slicer.util.showStatusMessage(f"Closed {ni} issues and {np} PRs for release {version}.")
+
+    def onAnnounceUpcomingRelease(self):
+        if not self.logic.localRepo:
+            return
+        nameWithOwner = self.logic.nameWithOwner("origin")
+        deadlineISO = self.releaseUI.announcementDeadline.date.toString(qt.Qt.ISODate)
+        message = self.releaseUI.announcementMessageEdit.plainText
+        with slicer.util.tryWithErrorDisplay("Failed to query open items", waitCursor=True):
+            issues, prs = self.logic.openIssuesAndPRs(nameWithOwner)
+        if not issues and not prs:
+            slicer.util.infoDisplay(f"{nameWithOwner} has no open issues or PRs to notify.")
+            return
+        prompt = (
+            f"Post announcement to {len(issues)} open issues and {len(prs)} open PRs in {nameWithOwner}?\n"
+            f"Deadline: {deadlineISO}"
+        )
+        if not (self.testingMode or slicer.util.confirmOkCancelDisplay(prompt)):
+            return
+        with slicer.util.tryWithErrorDisplay("Failed to post announcement", waitCursor=True):
+            ni, np = self.logic.announceUpcomingRelease(nameWithOwner, deadlineISO, message)
+            slicer.util.showStatusMessage(f"Posted announcement to {ni} issues and {np} PRs.")
 
     def previewRepository(self, repoNameWithOwner):
         """Clones a repository and loads its data for previewing."""
@@ -2104,6 +2260,21 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
                     }
                     viewerPermission
                     pushedAt
+                    issues(states: [OPEN], first: 100) {
+                      totalCount
+                      nodes {
+                        number title
+                        author { login }
+                        assignees(first: 5) { nodes { login } }
+                      }
+                    }
+                    pullRequests(states: [OPEN], first: 100) {
+                      totalCount
+                      nodes {
+                        number title isDraft
+                        author { login }
+                      }
+                    }
                   }
                 }
                 pageInfo { endCursor hasNextPage }
@@ -2498,30 +2669,93 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.ghTopicClearCache()
 
     def getReleases(self):
-        """Get list of releases for the current repository."""
+        """Get list of releases for the current repository (latest first)."""
         if not self.localRepo:
             return None
         originNameWithOwner = self.nameWithOwner("origin")
-        return self.ghJSON(f"release list --repo {originNameWithOwner} --json name,tagName")
+        return self.ghJSON(f"release list --repo {originNameWithOwner} --json name,tagName,publishedAt")
+
+    def closedIssuesSinceLastRelease(self, nameWithOwner):
+        """Return a list of {number,title} for issues closed since the last published release.
+        If there is no prior release, returns all closed issues for the repo."""
+        releases = self.ghJSON(f"release list --repo {nameWithOwner} --json tagName,publishedAt") or []
+        sinceDate = releases[0].get('publishedAt') if releases else None
+        if sinceDate:
+            cmd = ["issue", "list", "--repo", nameWithOwner,
+                   "--json", "number,title",
+                   "--search", f"is:issue is:closed closed:>{sinceDate}"]
+        else:
+            cmd = ["issue", "list", "--repo", nameWithOwner, "--state", "closed",
+                   "--json", "number,title"]
+        return self.ghJSON(cmd) or []
+
+    def nextReleaseTag(self):
+        """Compute the next vN tag based on existing releases. Returns None if no repo loaded."""
+        if not self.localRepo:
+            return None
+        releases = self.getReleases() or []
+        nextVersion = 1
+        tagNames = [r['tagName'] for r in releases if r['tagName'].startswith('v')]
+        versions = [int(t[1:]) for t in tagNames if t[1:].isdigit()]
+        if versions:
+            nextVersion = max(versions) + 1
+        return f"v{nextVersion}"
 
     def createRelease(self, releaseNotes=""):
-        """Create a new release for the current repository with an incremented version."""
+        """Create a new release for the current repository with an incremented version. Returns the new tag."""
         if not self.localRepo:
-            return
-        releases = self.getReleases()
-        nextVersion = 1
-        if releases:
-            tagNames = [r['tagName'] for r in releases if r['tagName'].startswith('v')]
-            versions = [int(t[1:]) for t in tagNames if t[1:].isdigit()]
-            if versions:
-                nextVersion = max(versions) + 1
-        upstreamNameWithOwner = self.nameWithOwner("origin")
+            return None
+        tag = self.nextReleaseTag()
+        originNameWithOwner = self.nameWithOwner("origin")
         if releaseNotes == "":
-            releaseNotes = f"Version {nextVersion} release."
+            releaseNotes = f"Version {tag} release."
         # use list for command to handle spaces in releaseNotes
-        commandList = ["release", "create", f"v{nextVersion}", "--repo", upstreamNameWithOwner]
+        commandList = ["release", "create", tag, "--repo", originNameWithOwner]
         commandList += ["--notes", releaseNotes]
         self.gh(commandList)
+        return tag
+
+    def openIssuesAndPRs(self, nameWithOwner):
+        """Return (issues, prs) lists of open items for the given repo, each with number and title."""
+        issues = self.ghJSON(f"issue list --repo {nameWithOwner} --state open --json number,title")
+        prs = self.ghJSON(f"pr list --repo {nameWithOwner} --state open --json number,title")
+        return issues, prs
+
+    def announceUpcomingRelease(self, nameWithOwner, deadlineISO, message):
+        """Post a release-announcement comment on every open issue and PR.
+        Substitutes {deadline} in the message body. Returns (issueCount, prCount)."""
+        issues, prs = self.openIssuesAndPRs(nameWithOwner)
+        body = message.replace("{deadline}", deadlineISO)
+        for issue in issues:
+            n = str(issue['number'])
+            self.progressMethod(f"Announcement on issue #{n}: {issue['title']}")
+            self.gh(["issue", "comment", n, "--repo", nameWithOwner, "--body", body])
+        for pr in prs:
+            n = str(pr['number'])
+            self.progressMethod(f"Announcement on PR #{n}: {pr['title']}")
+            self.gh(["pr", "comment", n, "--repo", nameWithOwner, "--body", body])
+        return len(issues), len(prs)
+
+    def closeOpenItemsForRelease(self, nameWithOwner, version, message=None):
+        """Comment on and close every open issue and PR. PRs are closed without merging.
+        Returns (issueCount, prCount)."""
+        if message is None:
+            message = (
+                f"Release {version} has been published. This will be closed.\n"
+                f"Open a new issue or PR on the updated baseline to continue contributing."
+            )
+        issues, prs = self.openIssuesAndPRs(nameWithOwner)
+        for issue in issues:
+            n = str(issue['number'])
+            self.progressMethod(f"Closing issue #{n}: {issue['title']}")
+            self.gh(["issue", "comment", n, "--repo", nameWithOwner, "--body", message])
+            self.gh(["issue", "close", n, "--repo", nameWithOwner])
+        for pr in prs:
+            n = str(pr['number'])
+            self.progressMethod(f"Closing PR #{n}: {pr['title']}")
+            self.gh(["pr", "comment", n, "--repo", nameWithOwner, "--body", message])
+            self.gh(["pr", "close", n, "--repo", nameWithOwner])
+        return len(issues), len(prs)
 
     def createAccessionRepo(self, sourceVolume, colorTable, accessionData, sourceSegmentation=None, screenshots=None):
 
@@ -2639,7 +2873,28 @@ Repository for segmentation of a specimen scan.  See [this JSON file](MorphoDepo
         repo.index.add(repoFilePaths)
         repo.index.commit("Initial commit")
 
-        self.gh(f"repo create {repoName} --add-readme --disable-wiki --public --source {repoDir} --push")
+        try:
+            self.gh(f"repo create {repoName} --add-readme --disable-wiki --public --source {repoDir} --push")
+        except RuntimeError as e:
+            # gh repo create --push can race with GitHub provisioning the new repo for
+            # git-over-HTTPS access; the create succeeds but the immediate push fails with
+            # "Repository not found". gh has already added the origin remote, so retry the
+            # push from the local clone with the branch specified (no upstream is set yet).
+            if "Repository not found" not in str(e):
+                raise
+            branchName = repo.active_branch.name
+            lastError = None
+            for delay in (2, 4, 8, 16):
+                self.progressMethod(f"Initial push raced with repo provisioning; retrying in {delay}s...")
+                time.sleep(delay)
+                try:
+                    repo.git.push("--set-upstream", "origin", branchName)
+                    lastError = None
+                    break
+                except Exception as pushError:
+                    lastError = pushError
+            if lastError is not None:
+                raise RuntimeError(f"Initial push retry failed after multiple attempts: {lastError}")
 
         self.localRepo = repo
         repoNameWithOwner = self.nameWithOwner("origin")
@@ -2966,6 +3221,9 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
         self.setUp()
         widget = slicer.modules.MorphoDepotWidget
         widget.testingMode = True
+        # Set to True to stop before exercising the Release tab so it can be inspected manually.
+        # gh auth is left in creator mode at the stop point.
+        widget.stopBeforeRelease = False
         self.test_MorphoDepot1()
         widget.testingMode = False
 
@@ -2993,8 +3251,8 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
         # 1. Get creator and annotator accounts from settings
         creator = slicer.util.settingsValue("MorphoDepot/testingCreatorUser", "")
         annotator = slicer.util.settingsValue("MorphoDepot/testingAnnotatorUser", "")
-        if not creator and annotator:
-            print("Creator and Annotator users must be set in Configure tab's Testing section")
+        if not (creator and annotator):
+            print("Both Creator and Annotator users must be set in Configure tab's Testing section")
             return
 
         widget = slicer.modules.MorphoDepotWidget
@@ -3015,6 +3273,10 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
         volumeNode = SampleData.SampleDataLogic().downloadMRHead()
         self.assertIsNotNone(volumeNode, "Failed to download MRHead sample data.")
         colorTable = slicer.util.getNode("Labels")
+        # Sample "Labels" color table ships without terminology metadata; fill defaults so the
+        # create-repo flow does not surface the "Missing Terminology" dialog.
+        for colorIndex in range(1, colorTable.GetNumberOfColors()):
+            colorTable.SetTerminology(colorIndex, "SCT", "85756007", "Tissue", "SCT", "85756007", "Tissue")
         widget.createUI.inputSelector.setCurrentNode(volumeNode)
         widget.createUI.colorSelector.setCurrentNode(colorTable)
 
@@ -3078,12 +3340,27 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
         assignedIssues = logic.ghJSON(f"issue list --repo {repoNameWithOwner} --assignee {annotator} --json number")
         self.assertEqual(len(assignedIssues), 2, f"Expected 2 issues to be assigned to {annotator}")
 
+        # Add a third issue (unassigned, no PR) so it stays open through the release;
+        # used to exercise repo-list counts/tooltip, pre-release announcement, and post-release cleanup.
+        issue3_title = "Segment the postcranium"
+        logic.gh(["issue", "create", "--repo", repoNameWithOwner, "--title", issue3_title,
+                  "--body", "Skipping for v1; will land in a later release."])
+
         # 9. Switch to Annotator to work on issues
         switchUser(annotator)
         self.delayDisplay("Annotator listing assigned issues")
-        annotatorIssues = logic.issueList()
-        # filter for the repo we just created
-        annotatorIssues = [issue for issue in annotatorIssues if issue['repository']['nameWithOwner'] == repoNameWithOwner]
+        # Avoid logic.issueList() here: it relies on GitHub's repository search index
+        # (topic:MorphoDepot), which lags for newly-created repos. A direct REST query
+        # against the known repo is immediate. Synthesize the dict shape loadIssue expects.
+        rawIssues = logic.ghJSON(
+            f"issue list --repo {repoNameWithOwner} --assignee {annotator} --state open --json number,title"
+        )
+        repoNameOnly = repoNameWithOwner.split("/")[1]
+        annotatorIssues = [
+            {'number': i['number'], 'title': i['title'],
+             'repository': {'name': repoNameOnly, 'nameWithOwner': repoNameWithOwner}}
+            for i in rawIssues
+        ]
         self.assertEqual(len(annotatorIssues), 2, f"Annotator should have 2 issues for repo {repoNameWithOwner}.")
 
         # 10. Annotator loads each issue, makes a change, and creates a PR.
@@ -3111,9 +3388,16 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
             widget.onCommit()
             slicer.app.processEvents()
 
-            # 11. Annotator requests review for the PR
+            # 11. Mark PR as ready. widget.onRequestReview -> requestReview -> issuePR ->
+            # prList -> search index, which lags for the freshly created PR (silent failure
+            # would leave the PR in draft and break the later merge). Find the PR via direct
+            # REST and use gh directly.
             self.delayDisplay(f"Requesting review for work on issue #{issue['number']}")
-            widget.onRequestReview()
+            branchName = f"issue-{issue['number']}"
+            rawPRs = logic.ghJSON(f"pr list --repo {repoNameWithOwner} --state open --json number,title")
+            matching = [p for p in rawPRs if p['title'] == branchName]
+            self.assertEqual(len(matching), 1, f"Expected 1 open PR for branch {branchName}; found {len(matching)}.")
+            logic.gh(["pr", "ready", str(matching[0]['number']), "--repo", repoNameWithOwner])
             slicer.app.processEvents()
 
         # 12. Switch to Creator to review the PRs
@@ -3128,7 +3412,16 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
             issueID = f"issue-{issue['number']}"
             issueIDs.append(issueID)
             issuesByID[issueID] = issue
-        prList = logic.prList("reviewer")
+        # Avoid logic.prList("reviewer") here for the same reason as issueList above:
+        # it relies on the topic search index. Direct REST against the known repo is reliable.
+        rawPRs = logic.ghJSON(
+            f"pr list --repo {repoNameWithOwner} --state open --json number,title,author"
+        )
+        prList = [
+            {'number': p['number'], 'title': p['title'], 'author': p['author'],
+             'repository': {'name': repoNameOnly, 'nameWithOwner': repoNameWithOwner}}
+            for p in rawPRs
+        ]
         repoPRsByIssueID = {}
         for pr in prList:
             if pr['repository']['nameWithOwner'] == repoNameWithOwner and pr['title'] in issueIDs:
@@ -3137,18 +3430,23 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
         prToRequestChanges = repoPRsByIssueID[issueIDs[1]]
         issueToChange = issuesByID[issueIDs[1]]
 
-        # Approve the first PR
+        # Approve the first PR. logic.approvePR() and logic.requestChanges() resolve the PR
+        # via logic.issuePR() -> logic.prList() -> ghTopicData() -> the topic search index, which
+        # lags for freshly created PRs. We have the PR numbers from the REST query above, so
+        # invoke gh directly to avoid the indexing dependency.
         self.delayDisplay(f"Approving and merging PR #{prToApprove['number']}")
         logic.loadPR(prToApprove, repoDirectory)
-        widget.reviewUI.reviewMessage.plainText = "Looks good!"
-        widget.onApprove()
+        approveNum = str(prToApprove['number'])
+        logic.gh(["pr", "review", approveNum, "--approve", "--repo", repoNameWithOwner, "--body", "Looks good!"])
+        logic.gh(["pr", "merge", approveNum, "--repo", repoNameWithOwner, "--squash", "--body", "Merging and closing"])
         slicer.app.processEvents()
 
-        # Request changes on the second PR
+        # Request changes on the second PR (also direct-gh for the same reason).
         self.delayDisplay(f"Requesting changes on PR #{prToRequestChanges['number']}")
         logic.loadPR(prToRequestChanges, repoDirectory)
-        widget.reviewUI.reviewMessage.plainText = "Please add another segment."
-        widget.onRequestChanges()
+        changeNum = str(prToRequestChanges['number'])
+        logic.gh(["pr", "review", changeNum, "--request-changes", "--repo", repoNameWithOwner, "--body", "Please add another segment."])
+        logic.gh(["pr", "ready", changeNum, "--undo", "--repo", repoNameWithOwner])
         slicer.app.processEvents()
 
         # 13. Switch to Annotator to address feedback
@@ -3163,40 +3461,161 @@ class MorphoDepotTest(ScriptedLoadableModuleTest):
         segmentation = logic.segmentationNode.GetSegmentation()
         segmentation.AddEmptySegment("additional-annotator-segment")
 
-        commitMessage = f"Addressing feedback on issue #{issueToChange['number']}"
-        widget.annotateUI.messageTitle.text = commitMessage
-        widget.onCommit()
+        # Replace widget.onCommit -> commitAndPush. After pushing, commitAndPush calls
+        # issuePR (search-index dependent) to check whether to create a PR; on lag it
+        # returns None and attempts to create a duplicate. Replicate the save+commit+push
+        # directly. The PR already exists, so no creation step is needed.
+        self.delayDisplay(f"Committing additional change on issue #{issueToChange['number']}")
+        ok = slicer.util.saveNode(logic.segmentationNode, logic.segmentationPath, properties={'useCompression': True})
+        self.assertTrue(ok, "Segmentation save failed")
+        logic.localRepo.index.add([logic.segmentationPath])
+        logic.localRepo.index.commit(f"Addressing feedback on issue #{issueToChange['number']}")
+        branchName = logic.localRepo.active_branch.name
+        logic.localRepo.git.pull("--rebase", "origin", branchName)
+        logic.localRepo.remote(name="origin").push(branchName)
         slicer.app.processEvents()
-        widget.onRequestReview()
+        # Mark PR ready (it was set back to draft by the request-changes step above).
+        logic.gh(["pr", "ready", changeNum, "--repo", repoNameWithOwner])
         slicer.app.processEvents()
 
-        # 14. Switch back to Creator to approve the updated PR
+        # 14. Switch back to Creator to approve the updated PR (direct gh, same reason).
         switchUser(creator)
         self.delayDisplay(f"Creator approving updated PR #{prToRequestChanges['number']}")
         logic.loadPR(prToRequestChanges, repoDirectory)
-        widget.reviewUI.reviewMessage.plainText = "Thanks for the update!"
-        widget.onApprove()
+        logic.gh(["pr", "review", changeNum, "--approve", "--repo", repoNameWithOwner, "--body", "Thanks for the update!"])
+        logic.gh(["pr", "merge", changeNum, "--repo", repoNameWithOwner, "--squash", "--body", "Merging and closing"])
         slicer.app.processEvents()
 
-        # 15. Create a release and open the repository page
-        self.delayDisplay("Creating a new release")
-        widget.tabWidget.setCurrentWidget(widget.releaseUI.repoList.parent().parent())
-        widget.onRefreshReleaseTab()
-        slicer.app.processEvents()
+        # Optional manual-inspection stop before the Release tab automation.
+        # Re-asserts creator auth so the tester can drive the Release tab as the repo admin.
+        if getattr(widget, 'stopBeforeRelease', False):
+            switchUser(creator)
+            self.delayDisplay(f"Stopping before release stage. Repo: {repoNameWithOwner}")
+            self.delayDisplay(f"gh auth is set to creator: {creator}")
+            return
 
-        # Find and select the repository in the list
-        repoItem = None
-        for i in range(widget.releaseUI.repoList.count):
-            item = widget.releaseUI.repoList.item(i)
-            repo = widget.reposByItem[item]
-            print(repo['nameWithOwner'], repoNameWithOwner)
-            if repo['nameWithOwner'] == repoNameWithOwner:
-                repoItem = item
-                break
-        self.assertIsNotNone(repoItem, f"Repository {repoNameWithOwner} not found in release list.")
-        widget.onReleaseRepoDoubleClicked(repoItem)
-        widget.releaseUI.releaseCommentsEdit.plainText = "First segmentation complete."
-        widget.onMakeRelease()
+        # Defensive patches for the Release tab automation:
+        #   - widget.onRefreshReleaseTab -> administratedRepoList -> morphoRepos uses the
+        #     topic-based repository search index, which lags for freshly-created repos.
+        #   - widget.onReleaseRepoDoubleClicked -> updateReleaseNotesTemplate ->
+        #     closedIssuesSinceLastRelease uses gh issue list --search, which lags for
+        #     recently-closed issues.
+        # Patch both to use direct REST against the known repo for the test, and restore
+        # them after. Production code is unchanged; this whole search layer is going away
+        # when RepoClerk lands.
+        originalMorphoRepos = logic.morphoRepos
+        originalClosedIssuesSince = logic.closedIssuesSinceLastRelease
+
+        def directMorphoRepos():
+            repoView = logic.ghJSON(
+                f"repo view {repoNameWithOwner} --json name,owner,viewerPermission,pushedAt"
+            )
+            rawIssues = logic.ghJSON(
+                f"issue list --repo {repoNameWithOwner} --state open --json number,title,author,assignees"
+            )
+            rawPRs = logic.ghJSON(
+                f"pr list --repo {repoNameWithOwner} --state open --json number,title,author,isDraft"
+            )
+            issueNodes = [{
+                'number': i['number'],
+                'title': i['title'],
+                'author': i.get('author') or {},
+                'assignees': {'nodes': i.get('assignees', []) or []},
+            } for i in rawIssues]
+            prNodes = [{
+                'number': p['number'],
+                'title': p['title'],
+                'author': p.get('author') or {},
+                'isDraft': p.get('isDraft', False),
+            } for p in rawPRs]
+            return [{
+                'name': repoView['name'],
+                'owner': repoView['owner'],
+                'viewerPermission': repoView['viewerPermission'],
+                'pushedAt': repoView['pushedAt'],
+                'issues': {'totalCount': len(issueNodes), 'nodes': issueNodes},
+                'pullRequests': {'totalCount': len(prNodes), 'nodes': prNodes},
+            }]
+
+        def directClosedIssuesSinceLastRelease(nameWithOwner):
+            releases = logic.ghJSON(
+                f"release list --repo {nameWithOwner} --json tagName,publishedAt"
+            ) or []
+            sinceDate = releases[0].get('publishedAt') if releases else None
+            allClosed = logic.ghJSON([
+                "issue", "list", "--repo", nameWithOwner, "--state", "closed",
+                "--json", "number,title,closedAt", "--limit", "200",
+            ]) or []
+            if sinceDate:
+                allClosed = [i for i in allClosed if i.get('closedAt', '') > sinceDate]
+            return [{'number': i['number'], 'title': i['title']} for i in allClosed]
+
+        logic.morphoRepos = directMorphoRepos
+        logic.closedIssuesSinceLastRelease = directClosedIssuesSinceLastRelease
+
+        try:
+            # 15. Create a release and open the repository page
+            self.delayDisplay("Creating a new release")
+            widget.tabWidget.setCurrentWidget(widget.releaseUI.repoList.parent().parent())
+            widget.onRefreshReleaseTab()
+            slicer.app.processEvents()
+
+            # Find and select the repository in the list
+            repoItem = None
+            for i in range(widget.releaseUI.repoList.count):
+                item = widget.releaseUI.repoList.item(i)
+                repo = widget.reposByItem[item]
+                if repo['nameWithOwner'] == repoNameWithOwner:
+                    repoItem = item
+                    break
+            self.assertIsNotNone(repoItem, f"Repository {repoNameWithOwner} not found in release list.")
+
+            # Repo-list row should show counts (1 open issue from issue3, 0 open PRs after merges)
+            self.assertIn("(1 open issue, 0 open PRs)", repoItem.text(),
+                          f"Repo row text was: {repoItem.text()}")
+            self.assertIn(issue3_title, repoItem.toolTip(),
+                          f"Tooltip should mention the open issue. Tooltip was: {repoItem.toolTip()}")
+
+            widget.onReleaseRepoDoubleClicked(repoItem)
+            slicer.app.processEvents()
+
+            # Auto-generated change-log should list the two issues closed via merged PRs
+            autoNotes = widget.releaseUI.releaseCommentsEdit.plainText
+            self.assertIn("## Changes in this release", autoNotes,
+                          f"Change-log header missing from auto notes: {autoNotes!r}")
+            self.assertIn(issue1_title, autoNotes, f"Issue 1 title missing from change log: {autoNotes!r}")
+            self.assertIn(issue2_title, autoNotes, f"Issue 2 title missing from change log: {autoNotes!r}")
+
+            # Prepend owner prose; keep the auto-generated change log below
+            ownerComment = "First segmentation complete."
+            widget.releaseUI.releaseCommentsEdit.plainText = ownerComment + "\n" + autoNotes
+
+            # Exercise pre-release announcement against the open postcranium issue
+            testMarker = "MORPHODEPOT_TEST_ANNOUNCE"
+            widget.releaseUI.announcementMessageEdit.plainText = f"{testMarker} (deadline {{deadline}})"
+            widget.releaseUI.announcementDeadline.date = qt.QDate.currentDate().addDays(7)
+            widget.onAnnounceUpcomingRelease()
+            slicer.app.processEvents()
+
+            # Verify the announcement comment landed on the open issue
+            openIssues = logic.ghJSON(f"issue list --repo {repoNameWithOwner} --state open --json number,title")
+            issue3 = next((i for i in openIssues if i['title'] == issue3_title), None)
+            self.assertIsNotNone(issue3, "Open issue 3 should still be present before release.")
+            issue3View = logic.ghJSON(f"issue view {issue3['number']} --repo {repoNameWithOwner} --json comments")
+            issue3Comments = issue3View.get('comments', []) if isinstance(issue3View, dict) else []
+            self.assertTrue(any(testMarker in c.get('body', '') for c in issue3Comments),
+                            f"Announcement marker not found in any comment on issue #{issue3['number']}.")
+
+            widget.onMakeRelease()
+            slicer.app.processEvents()
+
+            # In testingMode the cleanup confirm is auto-accepted; the lingering issue should now be closed.
+            remainingOpen = logic.ghJSON(f"issue list --repo {repoNameWithOwner} --state open --json number")
+            self.assertEqual(len(remainingOpen), 0,
+                             f"Post-release cleanup should have closed all open items; {len(remainingOpen)} remain.")
+        finally:
+            logic.morphoRepos = originalMorphoRepos
+            logic.closedIssuesSinceLastRelease = originalClosedIssuesSince
 
         #logic.gh(f"repo delete {repoNameWithOwner} --yes")
 

@@ -449,6 +449,8 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         self.onAdminModeChanged(self.configureUI.adminModeCheckBox.checkState())
         self.reviewUI.hideDraftsCheckBox.checked = self.hidePRDrafts
 
+        self.updateRefreshButtonLabels()
+
     def cleanup(self) -> None:
         """Called when the application closes and the module widget is destroyed."""
         self.removeObservers()
@@ -464,6 +466,18 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
 
     def onCurrentTabChanged(self,index):
         qt.QSettings().setValue("MorphoDepot/tabIndex", index)
+        self.updateRefreshButtonLabels()
+
+    def updateRefreshButtonLabels(self):
+        """Suffix the Annotate/Review/Release Refresh GitHub buttons with the active gh user."""
+        try:
+            user = self.logic.whoami()
+            suffix = f" (user: {user})"
+        except Exception:
+            suffix = ""
+        self.annotateUI.refreshButton.text = f"Refresh Github{suffix}"
+        self.reviewUI.refreshButton.text = f"Refresh Github{suffix}"
+        self.releaseUI.refreshButton.text = f"Refresh Github{suffix}"
 
     def onAdminModeChanged(self, state):
         isAdmin = (state == qt.Qt.Checked)

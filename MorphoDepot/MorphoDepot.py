@@ -1444,10 +1444,22 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         lines.append(f"Make release {plan['newTag']} for the loaded repository.")
         lines.append("")
         lines.append("If you click OK, the following will happen on main:")
+        lines.append(
+            f"• A pre-release-{plan['newTag']} archive branch will be created and pushed to GitHub, "
+            f"capturing the pre-release state of main (including all per-issue segmentations) "
+            f"so it stays browsable on the remote."
+        )
         lines.append(f"• The selected segmentation '{baselineNode.GetName()}' will be saved as baseline.seg.nrrd (replacing any existing one).")
         lines.append(f"• The selected color table '{colorTableNode.GetName()}' will be saved (replacing any existing one).")
         if plan['archivedReadme']:
-            lines.append(f"• README.md will be moved to {plan['archivedReadme']} and a new README.md will be generated for {plan['newTag']}.")
+            lines.append(
+                f"• README.md will be moved to {plan['archivedReadme']} and a new README.md will be generated for {plan['newTag']}."
+            )
+            lines.append(
+                f"  ⚠ The new README.md is regenerated from MorphoDepotAccession.json — any manual edits in the current README.md "
+                f"will be preserved in {plan['archivedReadme']} but NOT carried into the new README.md. "
+                f"After the release, copy any sections you want to keep into the new README.md by hand."
+            )
         else:
             lines.append(f"• A new README.md will be generated for {plan['newTag']}.")
         if plan['newScreenshotNames']:
@@ -1460,7 +1472,7 @@ class MorphoDepotWidget(ScriptedLoadableModuleWidget, VTKObservationMixin, Enabl
         if plan['issueSegFiles']:
             lines.append(
                 f"• {len(plan['issueSegFiles'])} per-issue segmentation file(s) will be removed from the working tree "
-                f"(still preserved in git history): {', '.join(plan['issueSegFiles'])}."
+                f"(preserved in the pre-release-{plan['newTag']} branch and in git history): {', '.join(plan['issueSegFiles'])}."
             )
         lines.append(
             f"• These changes will be committed and pushed to origin/main, then the {plan['newTag']} "
@@ -2888,7 +2900,8 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
 
     def generateReleaseReadme(self, newTag, newScreenshotEntries):
         """Build a new README.md body for the given release. Reuses metadata from
-        MorphoDepotAccession.json. Lists previous-version README files. Lists only
+        MorphoDepotAccession.json. Links each previous release to its tag's tree on
+        GitHub so the reader sees the repository at that release stage. Lists only
         screenshots from this release flow (older screenshots stay in their archived READMEs)."""
         repoDir = self.localRepo.working_dir
         accessionPath = os.path.join(repoDir, "MorphoDepotAccession.json")
@@ -2912,6 +2925,11 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         scanDimensions = accession.get('scanDimensions', "Unknown")
         scanSpacing = accession.get('scanSpacing', "Unknown")
 
+        try:
+            originNameWithOwner = self.nameWithOwner("origin")
+        except Exception:
+            originNameWithOwner = None
+
         lines = [f"# Release {newTag}", ""]
 
         previousReadmes = sorted(
@@ -2923,7 +2941,10 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             for p in previousReadmes:
                 name = os.path.basename(p)
                 tag = name.replace("README-", "").replace(".md", "")
-                lines.append(f"- [{tag}]({name})")
+                if originNameWithOwner:
+                    lines.append(f"- [{tag}](https://github.com/{originNameWithOwner}/tree/{tag})")
+                else:
+                    lines.append(f"- [{tag}]({name})")
             lines.append("")
 
         lines.append("## MorphoDepot Repository")
@@ -3012,37 +3033,31 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         self.localRepo.remote(name="origin").push("main")
 
     def resetToReleaseBackup(self):
-        """Reset main to the pre-release backup branch and discard untracked changes.
-        Local-only: does NOT undo anything that was already pushed to origin/main."""
+        """Hard-reset main to the pre-release archive branch and discard untracked changes.
+        Local-only: does NOT undo anything that was already pushed to origin/main, and does
+        NOT delete the archive branch (it is intentionally kept as a permanent record)."""
         backup = getattr(self, 'releaseBackupBranch', None)
         if not (self.localRepo and backup):
             return False
         self.localRepo.git.reset("--hard", backup)
         self.localRepo.git.clean("-fd")
-        try:
-            self.localRepo.git.branch("-D", backup)
-        except Exception:
-            pass
         self.releaseBackupBranch = None
         return True
 
     def discardReleaseBackup(self):
-        """Drop the backup branch after a successful release."""
-        backup = getattr(self, 'releaseBackupBranch', None)
-        if not (self.localRepo and backup):
-            return
-        try:
-            self.localRepo.git.branch("-D", backup)
-        except Exception:
-            pass
+        """Clear the in-memory reference to the archive branch after a successful release.
+        The branch itself is intentionally kept (locally and on origin) as a permanent
+        archive of the pre-release state."""
         self.releaseBackupBranch = None
 
     def createRelease(self, releaseNotes="", baselineSegmentationNode=None, colorTableNode=None, screenshots=None):
-        """Create a new release: take a local backup branch, prepare the working tree
+        """Create a new release: create and push a pre-release-{tag} archive branch
+        capturing main as it is right now (so per-issue segmentations and any other
+        about-to-be-removed files stay browsable on GitHub), prepare the working tree
         (baseline, color table, README rotation, drop issue segmentations, screenshots),
         commit, push to origin/main, then create the gh release tag at that commit.
-        On exception the backup branch is left in place so resetToReleaseBackup can roll
-        back the local repo. Returns the new tag on success."""
+        On exception the archive branch is left in place so resetToReleaseBackup can
+        roll back the local repo. Returns the new tag on success."""
         if not self.localRepo:
             return None
         if baselineSegmentationNode is None or colorTableNode is None:
@@ -3051,9 +3066,12 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
         if tag is None:
             return None
 
-        backupName = f"morphodepot-release-backup-{tag}-{int(time.time())}"
+        backupName = f"pre-release-{tag}"
+        # Create the archive branch locally and push it before any working-tree changes
+        # so the pre-release state is preserved on the remote even if later steps fail.
         self.localRepo.git.branch(backupName)
         self.releaseBackupBranch = backupName
+        self.localRepo.remote(name="origin").push(backupName)
 
         self.prepareReleaseSnapshot(tag, baselineSegmentationNode, colorTableNode, screenshots or [])
 

@@ -2936,15 +2936,25 @@ class MorphoDepotLogic(ScriptedLoadableModuleLogic):
             glob.glob(os.path.join(repoDir, "README-v*.md")),
             key=lambda p: int(os.path.basename(p).replace("README-v", "").replace(".md", "")),
         )
-        if previousReadmes:
+        versions = []
+        for p in previousReadmes:
+            nStr = os.path.basename(p).replace("README-v", "").replace(".md", "")
+            if nStr.isdigit():
+                versions.append(int(nStr))
+        newTagN = int(newTag[1:]) if newTag.startswith('v') and newTag[1:].isdigit() else None
+        if versions:
             lines.append("## Previous releases")
-            for p in previousReadmes:
-                name = os.path.basename(p)
-                tag = name.replace("README-", "").replace(".md", "")
-                if originNameWithOwner:
-                    lines.append(f"- [{tag}](https://github.com/{originNameWithOwner}/tree/{tag})")
+            # Each previous version vN links to the pre-release-v(N+1) branch's README.md:
+            # that branch captured main right before v(N+1) was prepped, i.e. the README as
+            # it was while vN was the most recent release (and reflects any edits made to
+            # README.md between vN and v(N+1)).
+            for i, v in enumerate(versions):
+                nextN = versions[i + 1] if i + 1 < len(versions) else newTagN
+                if originNameWithOwner and nextN is not None:
+                    url = f"https://github.com/{originNameWithOwner}/blob/pre-release-v{nextN}/README.md"
+                    lines.append(f"- [v{v}]({url})")
                 else:
-                    lines.append(f"- [{tag}]({name})")
+                    lines.append(f"- [v{v}](README-v{v}.md)")
             lines.append("")
 
         lines.append("## MorphoDepot Repository")
